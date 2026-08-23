@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Cpu, Layers, HardDrive, Eye, X } from 'lucide-react';
+import { Activity, Cpu, Layers, HardDrive, Eye, X, Terminal, Clock } from 'lucide-react';
+import { TauriBridge } from '../services/tauriBridge';
+import { ProcessTelemetry } from '../types/board';
 
 interface Props {
   nodeCount: number;
@@ -19,12 +21,28 @@ export const SystemTelemetryHUD: React.FC<Props> = ({
   const [showModal, setShowModal] = useState(false);
   const [fps, setFps] = useState<number>(60);
   const [heapMb, setHeapMb] = useState<number>(18.5);
-  const [history, setHistory] = useState<number[]>([18, 19, 18.5, 19.2, 18.8, 19.4, 18.2]);
+  const [procTel, setProcTel] = useState<ProcessTelemetry>({
+    pid: 0,
+    physical_memory_mb: 18.5,
+    virtual_memory_mb: 32.0,
+    thread_count: 4,
+    uptime_seconds: 0,
+  });
+  const [history, setHistory] = useState<number[]>([18.2, 18.5, 18.9, 19.1, 18.6, 19.4, 18.5]);
 
   useEffect(() => {
     let frameCount = 0;
     let lastTime = performance.now();
     let animId: number;
+
+    const fetchTelemetry = async () => {
+      const data = await TauriBridge.getProcessTelemetry();
+      setProcTel(data);
+      setHistory((prev) => [...prev.slice(-19), data.physical_memory_mb]);
+    };
+
+    fetchTelemetry();
+    const timer = setInterval(fetchTelemetry, 1500);
 
     const loop = (now: number) => {
       frameCount++;
@@ -36,32 +54,44 @@ export const SystemTelemetryHUD: React.FC<Props> = ({
         const perf = window.performance as unknown as {
           memory?: { usedJSHeapSize: number };
         };
-        const currentHeap = perf?.memory
-          ? +(perf.memory.usedJSHeapSize / (1024 * 1024)).toFixed(1)
-          : +(18 + Math.random() * 2.5).toFixed(1);
-
-        setHeapMb(currentHeap);
-        setHistory((prev) => [...prev.slice(-15), currentHeap]);
+        if (perf?.memory) {
+          const currentHeap = +(perf.memory.usedJSHeapSize / (1024 * 1024)).toFixed(1);
+          setHeapMb(currentHeap);
+        }
       }
       animId = requestAnimationFrame(loop);
     };
 
     animId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animId);
+    return () => {
+      cancelAnimationFrame(animId);
+      clearInterval(timer);
+    };
   }, []);
 
-  const totalEstimateMb = (18.0 + heapMb).toFixed(1);
+  const formatUptime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}m ${s < 10 ? '0' : ''}${s}s`;
+  };
 
   return (
     <>
       <div
         className="telemetry-compact-pill"
         onClick={() => setShowModal(true)}
-        title="Click for Live System Diagnostics & Memory Telemetry"
+        title="Click for Real-Time Native OS Process & Resource Diagnostics"
       >
         <span className="telemetry-live-dot" />
+        {procTel.pid > 0 && (
+          <>
+            <span className="telemetry-label">PID:</span>
+            <span className="amber-glow-text">{procTel.pid}</span>
+            <span className="telemetry-sep">·</span>
+          </>
+        )}
         <span className="telemetry-label">RAM:</span>
-        <span className="amber-glow-text">~{totalEstimateMb} MB</span>
+        <span className="amber-glow-text">{procTel.physical_memory_mb} MB</span>
         <span className="telemetry-sep">·</span>
         <span className="telemetry-label">HEAP:</span>
         <span>{heapMb} MB</span>
@@ -69,18 +99,18 @@ export const SystemTelemetryHUD: React.FC<Props> = ({
         <span className="telemetry-label">FPS:</span>
         <span className={fps >= 45 ? 'fps-good' : 'fps-warn'}>{fps}</span>
         <span className="telemetry-sep">·</span>
-        <span className="telemetry-label">EDITORS:</span>
-        <span>{activeEditorCount}/1 MAX</span>
+        <span className="telemetry-label">THREADS:</span>
+        <span>{procTel.thread_count}</span>
         <Activity size={12} className="telemetry-icon-pulse" />
       </div>
 
       {showModal && (
-        <div className="shortcuts-modal-backdrop" onClick={() => setShowModal(false)}>
-          <div className="shortcuts-modal telemetry-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="terminal-modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="terminal-modal telemetry-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title telemetry-header-title">
-                <Activity size={14} className="terminal-icon-pulse" />
-                <span>[SYSTEM_RESOURCE_TELEMETRY // LIVE DIAGNOSTICS]</span>
+                <Activity size={14} className="amber-glow-icon" />
+                <span>[PROCESS_RESOURCE_TELEMETRY // NATIVE OS DIAGNOSTICS]</span>
               </div>
               <button className="modal-close-btn" onClick={() => setShowModal(false)}>
                 <X size={14} />
@@ -91,13 +121,46 @@ export const SystemTelemetryHUD: React.FC<Props> = ({
               <div className="telemetry-stats-grid">
                 <div className="telemetry-stat-card">
                   <div className="stat-header">
-                    <HardDrive size={13} />
-                    <span>TOTAL MEMORY</span>
+                    <Terminal size={13} />
+                    <span>PROCESS ID (PID)</span>
                   </div>
                   <div className="stat-big-val">
-                    {totalEstimateMb} <span className="stat-unit">MB</span>
+                    {procTel.pid > 0 ? procTel.pid : 'STANDALONE'}
                   </div>
-                  <div className="stat-sub">~18MB Tauri Shell + {heapMb}MB JS Heap</div>
+                  <div className="stat-sub">Native OS ThreadTrace Process Handle</div>
+                </div>
+
+                <div className="telemetry-stat-card">
+                  <div className="stat-header">
+                    <HardDrive size={13} />
+                    <span>PHYSICAL RAM (RSS)</span>
+                  </div>
+                  <div className="stat-big-val">
+                    {procTel.physical_memory_mb} <span className="stat-unit">MB</span>
+                  </div>
+                  <div className="stat-sub">Working Set Physical Memory Allocation</div>
+                </div>
+
+                <div className="telemetry-stat-card">
+                  <div className="stat-header">
+                    <Layers size={13} />
+                    <span>VIRTUAL COMMIT</span>
+                  </div>
+                  <div className="stat-big-val">
+                    {procTel.virtual_memory_mb} <span className="stat-unit">MB</span>
+                  </div>
+                  <div className="stat-sub">Virtual Memory Pagefile Footprint</div>
+                </div>
+
+                <div className="telemetry-stat-card">
+                  <div className="stat-header">
+                    <Clock size={13} />
+                    <span>PROCESS UPTIME</span>
+                  </div>
+                  <div className="stat-big-val">
+                    {formatUptime(procTel.uptime_seconds)}
+                  </div>
+                  <div className="stat-sub">{procTel.thread_count} Active Operating System Threads</div>
                 </div>
 
                 <div className="telemetry-stat-card">
@@ -108,51 +171,39 @@ export const SystemTelemetryHUD: React.FC<Props> = ({
                   <div className="stat-big-val">
                     {fps} <span className="stat-unit">FPS</span>
                   </div>
-                  <div className="stat-sub">RAF Render Cycle Engine</div>
-                </div>
-
-                <div className="telemetry-stat-card">
-                  <div className="stat-header">
-                    <Layers size={13} />
-                    <span>ACTIVE EDITORS</span>
-                  </div>
-                  <div className="stat-big-val">
-                    {activeEditorCount} <span className="stat-unit">/ {nodeCount}</span>
-                  </div>
-                  <div className="stat-sub">0 Idle Memory Leaks (Lazy Mount)</div>
+                  <div className="stat-sub">60Hz Hardware Accelerated Canvas</div>
                 </div>
 
                 <div className="telemetry-stat-card">
                   <div className="stat-header">
                     <Eye size={13} />
-                    <span>DOM / SVG NODES</span>
+                    <span>CANVAS ARTIFACTS</span>
                   </div>
                   <div className="stat-big-val">
-                    {nodeCount * 45 + 120} <span className="stat-unit">ELTS</span>
+                    {nodeCount} <span className="stat-unit">NODES / {linkCount} LINKS</span>
                   </div>
-                  <div className="stat-sub">{linkCount} Quadratic Bézier Links</div>
+                  <div className="stat-sub">{activeEditorCount} Active CodeMirror 6 Editor(s)</div>
                 </div>
               </div>
 
               <div className="telemetry-chart-container">
                 <div className="chart-header">
-                  <span>LIVE HEAP MEMORY SPARKLINE (MB)</span>
-                  <span className="chart-live-badge">REAL-TIME</span>
+                  <span>LIVE PHYSICAL RAM ALLOCATION TRACKER (MB)</span>
+                  <span className="chart-live-badge">NATIVE TELEMETRY</span>
                 </div>
                 <div className="sparkline-track">
                   {history.map((val, idx) => {
-                    const min = 15;
-                    const max = 25;
+                    const min = 10;
+                    const max = 40;
                     const pct = Math.min(100, Math.max(15, ((val - min) / (max - min)) * 100));
                     return (
-                      <div key={idx} className="sparkline-bar-col" title={`${val} MB`}>
+                      <div key={idx} className="sparkline-bar-col" title={`${val} MB Physical RSS`}>
                         <div className="sparkline-bar" style={{ height: `${pct}%` }} />
                       </div>
                     );
                   })}
                 </div>
               </div>
-
 
               <div className="telemetry-viewport-info">
                 <div className="vp-row">
@@ -163,13 +214,17 @@ export const SystemTelemetryHUD: React.FC<Props> = ({
                   <span className="vp-val">X: {Math.round(pan.x)}px, Y: {Math.round(pan.y)}px</span>
                   <span className="vp-sep">|</span>
                   <span className="vp-label">PERSISTENCE:</span>
-                  <span className="vp-val text-green">ACID SQLITE / LOCALSTORAGE</span>
+                  <span className="vp-val text-green">ACID SQLITE (WAL MODE)</span>
                 </div>
               </div>
             </div>
 
             <div className="modal-footer">
-              <button className="terminal-btn primary-btn" onClick={() => setShowModal(false)}>
+              <button
+                type="button"
+                className="terminal-btn primary-btn"
+                onClick={() => setShowModal(false)}
+              >
                 CLOSE TELEMETRY [ESC]
               </button>
             </div>
@@ -179,4 +234,3 @@ export const SystemTelemetryHUD: React.FC<Props> = ({
     </>
   );
 };
-

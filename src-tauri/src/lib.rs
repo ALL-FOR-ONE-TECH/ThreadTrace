@@ -2,6 +2,7 @@ pub mod models;
 pub mod db;
 pub mod git_watcher;
 pub mod commands;
+pub mod process_metrics;
 
 use std::sync::Mutex;
 use rusqlite::Connection;
@@ -10,6 +11,8 @@ use commands::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    process_metrics::init_process_metrics();
+
     tauri::Builder::default()
         .setup(|app| {
             let app_handle = app.handle();
@@ -53,8 +56,10 @@ pub fn run() {
             commands::export_board_cmd,
             commands::import_board_cmd,
             commands::clear_board_cmd,
+            commands::get_process_telemetry_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Tauri application");
 }
+
 

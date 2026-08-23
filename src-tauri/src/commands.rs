@@ -1,9 +1,10 @@
 use std::sync::Mutex;
 use tauri::State;
 use rusqlite::Connection;
-use crate::models::{BoardData, FileSnippetResponse, RepoWatchInfo, SnippetNode};
+use crate::models::{BoardData, FileSnippetResponse, ProcessTelemetry, RepoWatchInfo, SnippetNode};
 use crate::db;
 use crate::git_watcher;
+use crate::process_metrics;
 
 pub struct AppState {
     pub db: Mutex<Connection>,
@@ -118,3 +119,9 @@ pub fn clear_board_cmd(state: State<'_, AppState>) -> Result<(), String> {
     *watched = None;
     Ok(())
 }
+
+#[tauri::command]
+pub fn get_process_telemetry_cmd() -> ProcessTelemetry {
+    process_metrics::get_process_telemetry()
+}
+

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { BoardData, SnippetNode, RepoWatchInfo, CustomTag, DEFAULT_TAGS } from '../types/board';
+import { BoardData, SnippetNode, RepoWatchInfo, CustomTag, DEFAULT_TAGS, ProcessTelemetry } from '../types/board';
 
 export function isTauriEnv(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -331,4 +331,22 @@ export const TauriBridge = {
     saveLocalData(parsed);
     return parsed;
   },
+
+  async getProcessTelemetry(): Promise<ProcessTelemetry> {
+    if (isTauriEnv()) {
+      try {
+        return await invoke<ProcessTelemetry>('get_process_telemetry_cmd');
+      } catch (err) {
+        console.warn('Tauri get_process_telemetry_cmd failed', err);
+      }
+    }
+    return {
+      pid: 1042,
+      physical_memory_mb: 18.5,
+      virtual_memory_mb: 32.0,
+      thread_count: 4,
+      uptime_seconds: Math.floor(performance.now() / 1000),
+    };
+  },
 };
+

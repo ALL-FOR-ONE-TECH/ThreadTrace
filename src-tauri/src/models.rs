@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnippetNode {
@@ -50,3 +50,13 @@ pub struct FileSnippetResponse {
     pub exists: bool,
     pub error: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessTelemetry {
+    pub pid: u32,
+    pub physical_memory_mb: f64,
+    pub virtual_memory_mb: f64,
+    pub thread_count: usize,
+    pub uptime_seconds: u64,
+}
+

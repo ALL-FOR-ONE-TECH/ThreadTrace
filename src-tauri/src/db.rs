@@ -13,6 +13,9 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
         PRAGMA foreign_keys = ON;
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = NORMAL;
+        PRAGMA busy_timeout = 5000;
 
         CREATE TABLE IF NOT EXISTS nodes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,6 +39,9 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             created_at INTEGER,
             UNIQUE(from_id, to_id)
         );
+
+        CREATE INDEX IF NOT EXISTS idx_links_from ON links(from_id);
+        CREATE INDEX IF NOT EXISTS idx_links_to ON links(to_id);
 
         CREATE TABLE IF NOT EXISTS repo_watch (
             path TEXT PRIMARY KEY,

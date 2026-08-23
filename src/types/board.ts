@@ -45,6 +45,14 @@ export interface RepoWatchInfo {
   is_watching?: boolean;
 }
 
+export interface ProcessTelemetry {
+  pid: number;
+  physical_memory_mb: number;
+  virtual_memory_mb: number;
+  thread_count: number;
+  uptime_seconds: number;
+}
+
 export interface SystemTelemetry {
   totalMemoryMb: number;
   jsHeapMb: number;
@@ -55,6 +63,7 @@ export interface SystemTelemetry {
   domNodes: number;
   history: number[];
 }
+
 
 export interface BoardData {
   title?: string;
