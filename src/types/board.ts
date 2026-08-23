@@ -1,4 +1,4 @@
-﻿export type TagType = 'BUG' | 'TASK' | 'FIX' | 'EVIDENCE' | string;
+export type TagType = 'BUG' | 'TASK' | 'FIX' | 'EVIDENCE' | string;
 
 export interface CustomTag {
   id: string;
@@ -61,7 +61,7 @@ export interface BoardData {
   custom_tags?: CustomTag[];
   nodes: SnippetNode[];
   links: SnippetLink[];
-  repo_watch?: RepoWatchInfo;
+  repo_watch?: RepoWatchInfo | null;
 }
 
 export interface DraggingState {

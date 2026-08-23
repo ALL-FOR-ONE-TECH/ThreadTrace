@@ -283,7 +283,7 @@ export const SnippetBoard: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 	hread_trace_.json;
+    a.download = `thread_trace_${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -299,7 +299,7 @@ export const SnippetBoard: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = investigation_dossier_.md;
+    a.download = `investigation_dossier_${Date.now()}.md`;
     a.click();
     URL.revokeObjectURL(url);
   };

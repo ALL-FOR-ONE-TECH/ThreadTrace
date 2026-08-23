@@ -1,4 +1,4 @@
-﻿import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { BoardData, SnippetNode, SnippetLink, RepoWatchInfo, CustomTag, DEFAULT_TAGS } from '../types/board';
 
 export function isTauriEnv(): boolean {
@@ -214,7 +214,7 @@ export const TauriBridge = {
         console.warn('Tauri read_file_backing failed', err);
       }
     }
-    return // [LOCAL READ ONLY FALLBACK]\n// File backing: \n// Lines:  - \nfunction previewSnippet() {\n  console.log('Viewing local file reference');\n};
+    return `// [LOCAL READ ONLY FALLBACK]\n// File backing: ${filePath}\n// Lines: ${lineStart ?? 1} - ${lineEnd ?? 50}\nfunction previewSnippet() {\n  console.log('Viewing local file reference');\n};`;
   },
 
   async watchRepo(path: string): Promise<RepoWatchInfo> {

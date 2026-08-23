@@ -108,7 +108,7 @@ export const TagManagerModal: React.FC<Props> = ({ tags, onSaveTags, onClose }) 
                   <button
                     key={c}
                     type="button"
-                    className={swatch-btn }
+                    className={`swatch-btn ${selectedColor === c ? 'swatch-active' : ''}`}
                     style={{ backgroundColor: c }}
                     onClick={() => setSelectedColor(c)}
                   />
