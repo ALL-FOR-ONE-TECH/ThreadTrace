@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { BoardData, SnippetNode, SnippetLink, RepoWatchInfo, CustomTag, DEFAULT_TAGS } from '../types/board';
+import { BoardData, SnippetNode, RepoWatchInfo, CustomTag, DEFAULT_TAGS } from '../types/board';
 
 export function isTauriEnv(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
