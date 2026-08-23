@@ -11,7 +11,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 pub fn get_git_info(repo_path: &str) -> RepoWatchInfo {
     let p = Path::new(repo_path);
-    if !p.exists() {
+    if !p.exists() || (!p.join(".git").exists() && !p.join("../.git").exists()) {
         return RepoWatchInfo {
             path: repo_path.to_string(),
             branch: None,
@@ -20,6 +20,7 @@ pub fn get_git_info(repo_path: &str) -> RepoWatchInfo {
             is_watching: false,
         };
     }
+
 
     let mut cmd_commit = Command::new("git");
     cmd_commit.args(["log", "-1", "--pretty=format:%h: %s (%cr)"]).current_dir(p);
