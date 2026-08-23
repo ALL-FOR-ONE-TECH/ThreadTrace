@@ -16,7 +16,7 @@ import {
   FilePlus,
   Sparkles,
   FileCode,
-  Terminal
+  Terminal,
 } from 'lucide-react';
 
 
@@ -73,7 +73,6 @@ export const Masthead: React.FC<Props> = ({
   onWatchRepo,
   isTauri,
 }) => {
-
   const [showRepoModal, setShowRepoModal] = useState(false);
   const [repoPathInput, setRepoPathInput] = useState(repoWatch?.path || '');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -96,24 +95,12 @@ export const Masthead: React.FC<Props> = ({
 
   return (
     <header className="board-masthead">
-      {/* Circuit diagram ASCII banner */}
-      <pre className="ascii-circuit-banner" aria-hidden="true">{`┌──[0x01:BUG]──┐        ┌──[0x02:EVIDENCE]──┐
-│ AUTH_RACE    ├───────►│ PROD_LOGS_409     │
-└───┬──────────┘        └───┬───────────────┘
-    ▼                       ▼
-┌──[0x03:FIX]───────────────┴───────────────┐
-│ INFLIGHT_MUTEX_QUEUE_DEDUPLICATION        │
-└───────────────────────────────────────────┘`}</pre>
-
       <div className="masthead-main-bar">
+        {/* Left: Brand, Title, Status & Tag Badges */}
         <div className="masthead-title-group">
           <div className="masthead-title-row">
-            <div className="app-logo-wrapper" title="THREAD_TRACE // Terminal Investigation Canvas">
-              <img
-                src={appLogo}
-                alt="ThreadTrace Logo"
-                className="app-logo-img"
-              />
+            <div className="app-logo-wrapper" title="ThreadTrace: Spatial Investigation Canvas">
+              <img src={appLogo} alt="ThreadTrace Logo" className="app-logo-img" />
             </div>
 
             {isEditingTitle ? (
@@ -144,25 +131,27 @@ export const Masthead: React.FC<Props> = ({
                 title="Click to rename investigation board"
               >
                 {title}
+                <span className="blinking-cursor">_</span>
                 <Edit2 size={12} className="title-edit-pencil" />
               </h1>
             )}
 
-            <div className="sys-status-badge" title={isTauri ? 'Native SQLite DB' : 'Local-first fallback'}>
+            <div className="sys-status-badge" title={isTauri ? 'Native SQLite WAL Mode' : 'Local-first Web Mode'}>
               <span className="pulse-dot" />
-              <span>{isTauri ? 'SYS: TAURI + SQLITE' : 'SYS: WEB + PERSIST'}</span>
+              <span>{isTauri ? 'SQLITE: WAL' : 'WEB PERSIST'}</span>
             </div>
           </div>
 
           <div className="masthead-meta-row">
-            <span className="meta-item">
-              NODES: <strong className="amber-glow">{nodeCount}</strong>
-            </span>
-            <span className="meta-sep">·</span>
-            <span className="meta-item">
-              LINKS: <strong className="amber-glow">{linkCount}</strong>
-            </span>
-            <span className="meta-sep">·</span>
+            <div className="metric-pill">
+              <span className="metric-label">CLUES</span>
+              <span className="metric-value amber-glow">{nodeCount}</span>
+            </div>
+            <div className="metric-pill">
+              <span className="metric-label">LINKS</span>
+              <span className="metric-value amber-glow">{linkCount}</span>
+            </div>
+            <span className="meta-divider" />
             <div className="tag-counts-cluster">
               {customTags.map((t) => {
                 const count = tagCounts[t.id] || 0;
@@ -171,12 +160,12 @@ export const Masthead: React.FC<Props> = ({
                     key={t.id}
                     className={`tag-count-pill tag-${t.id.toLowerCase()}`}
                     style={{
-                      borderColor: `${t.color}60`,
-                      backgroundColor: `${t.color}15`,
+                      borderColor: `${t.color}66`,
+                      backgroundColor: `${t.color}18`,
                       color: t.color,
                     }}
                   >
-                    {t.label}:{count}
+                    {t.label}: {count}
                   </span>
                 );
               })}
@@ -184,24 +173,36 @@ export const Masthead: React.FC<Props> = ({
           </div>
         </div>
 
+        {/* Right: Search, Filter, and Action Buttons */}
         <div className="masthead-toolbar">
-          <div className="search-bar-input-group">
-            <Search size={12} className="search-bar-icon" />
+          <div
+            className="search-bar-input-group"
+            onClick={() => onOpenCommandPalette && onOpenCommandPalette()}
+            title="Search clues or press Ctrl+K for Command Palette"
+          >
+            <Search size={13} className="search-bar-icon" />
             <input
               type="text"
               className="search-input"
-              placeholder="Search clues / code ..."
+              placeholder="Search clues / code ... (Ctrl+K)"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
             />
-            {searchQuery && (
+            {searchQuery ? (
               <button
+                type="button"
                 className="search-clear-btn"
-                onClick={() => onSearchChange('')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSearchChange('');
+                }}
                 title="Clear search"
               >
                 ×
               </button>
+            ) : (
+              <span className="kbd-shortcut-badge">CTRL+K</span>
             )}
           </div>
 
@@ -220,143 +221,144 @@ export const Masthead: React.FC<Props> = ({
             </select>
           </div>
 
-          <button
-            type="button"
-            className="terminal-btn"
-            onClick={onNewBoard}
-            title="Start fresh new investigation (clears board)"
-          >
-            <FilePlus size={12} />
-            <span>NEW</span>
-          </button>
+          <div className="toolbar-btn-group">
+            <button
+              type="button"
+              className="terminal-btn"
+              onClick={onNewBoard}
+              title="Start fresh new investigation (clears canvas)"
+            >
+              <FilePlus size={13} />
+              <span>NEW</span>
+            </button>
+
+            <button
+              type="button"
+              className="terminal-btn"
+              onClick={onLoadDemo}
+              title="Load sample investigation case"
+            >
+              <Sparkles size={13} />
+              <span>DEMO</span>
+            </button>
+
+            <button
+              type="button"
+              className="terminal-btn"
+              onClick={onOpenTagManager}
+              title="Manage Custom Tags & Color Palette (T)"
+            >
+              <Tag size={13} />
+              <span>TAGS</span>
+            </button>
+
+            <button
+              type="button"
+              className="terminal-btn"
+              onClick={() => setShowRepoModal(true)}
+              title="Attach local git repository context"
+            >
+              <GitBranch size={13} />
+              <span>REPO</span>
+            </button>
+
+            <button
+              type="button"
+              className="terminal-btn"
+              onClick={onAutoRelayout}
+              title="Auto-organize nodes into clean grid"
+            >
+              <LayoutGrid size={13} />
+              <span>RELAYOUT</span>
+            </button>
+
+            <button
+              type="button"
+              className="terminal-btn"
+              onClick={onOpenCommandPalette}
+              title="Open Command Palette & Global Search (Ctrl+K or /)"
+            >
+              <Terminal size={13} />
+              <span>PALETTE</span>
+            </button>
+
+            <button
+              type="button"
+              className="terminal-btn"
+              onClick={onExportHtmlDossier}
+              title="Export interactive offline HTML Dossier"
+            >
+              <FileCode size={13} />
+              <span>HTML</span>
+            </button>
+
+            <button
+              type="button"
+              className="terminal-btn"
+              onClick={onExportDossier}
+              title="Export Markdown Investigation Dossier"
+            >
+              <FileText size={13} />
+              <span>MD</span>
+            </button>
+
+            <button
+              type="button"
+              className="terminal-btn"
+              onClick={onExport}
+              title="Export raw JSON"
+            >
+              <Download size={13} />
+              <span>JSON</span>
+            </button>
+
+            <button
+              type="button"
+              className="terminal-btn"
+              onClick={onImport}
+              title="Import JSON snapshot"
+            >
+              <Upload size={13} />
+              <span>IMPORT</span>
+            </button>
+
+            <button
+              type="button"
+              className="terminal-btn icon-only"
+              onClick={onOpenShortcuts}
+              title="Keyboard shortcuts & cheatsheet (?)"
+            >
+              <HelpCircle size={14} />
+            </button>
+          </div>
 
           <button
             type="button"
-            className="terminal-btn"
-            onClick={onLoadDemo}
-            title="Load sample case investigation clues"
-          >
-            <Sparkles size={12} />
-            <span>DEMO</span>
-          </button>
-
-          <button
-            type="button"
-            className="terminal-btn"
-            onClick={onOpenTagManager}
-            title="Open Custom Tag Engine & Color Palette Manager (T)"
-          >
-            <Tag size={12} />
-            <span>TAGS</span>
-          </button>
-
-          <button
-            type="button"
-            className="terminal-btn"
-            onClick={() => setShowRepoModal(true)}
-            title="Attach local git repository context"
-          >
-            <GitBranch size={12} />
-            <span>REPO</span>
-          </button>
-
-          <button
-            type="button"
-            className="terminal-btn"
-            onClick={onAutoRelayout}
-            title="Auto-organize nodes into non-overlapping grid"
-          >
-            <LayoutGrid size={12} />
-            <span>RELAYOUT</span>
-          </button>
-
-          <button
-            type="button"
-            className="terminal-btn"
-            onClick={onOpenCommandPalette}
-            title="Open Command Palette & Global Search (Ctrl+K or /)"
-          >
-            <Terminal size={12} />
-            <span>PALETTE</span>
-          </button>
-
-          <button
-            type="button"
-            className="terminal-btn"
-            onClick={onExportHtmlDossier}
-            title="Export interactive offline HTML Investigation Report"
-          >
-            <FileCode size={12} />
-            <span>HTML</span>
-          </button>
-
-          <button
-            type="button"
-            className="terminal-btn"
-            onClick={onExportDossier}
-            title="Export Markdown Investigation Dossier with Mermaid flowchart"
-          >
-            <FileText size={12} />
-            <span>MD</span>
-          </button>
-
-
-          <button
-            type="button"
-            className="terminal-btn"
-            onClick={onExport}
-            title="Export snapshot as JSON"
-          >
-            <Download size={12} />
-            <span>JSON</span>
-          </button>
-
-          <button
-            type="button"
-            className="terminal-btn"
-            onClick={onImport}
-            title="Import snapshot JSON file"
-          >
-            <Upload size={12} />
-            <span>IMPORT</span>
-          </button>
-
-          <button
-            type="button"
-            className="terminal-btn icon-only"
-            onClick={onOpenShortcuts}
-            title="Keyboard shortcuts & terminal guide (?)"
-          >
-            <HelpCircle size={13} />
-          </button>
-
-          <button
-            type="button"
-            className="terminal-btn primary-btn add-btn"
+            className="terminal-btn primary-btn add-clue-btn"
             onClick={onAddSnippet}
-            title="Add new code snippet card (N)"
+            title="Pin new clue node (N)"
           >
-            <Plus size={14} />
-            <span>ADD_SNIPPET</span>
+            <Plus size={15} />
+            <span>PIN_CLUE (N)</span>
           </button>
         </div>
       </div>
 
       {repoWatch && (
         <div className="git-context-bar">
-          <span className="git-icon">⑂</span>
-          <span className="git-branch">{repoWatch.branch || 'main'}</span>
-          <span className="git-sep">:</span>
-          <span className="git-commit">{repoWatch.last_commit || 'Watching repository changes...'}</span>
+          <GitBranch size={12} className="git-bar-icon" />
+          <span className="git-branch-tag">{repoWatch.branch || 'main'}</span>
+          <span className="git-bar-sep">:</span>
+          <span className="git-commit-text">{repoWatch.last_commit || 'Watching repository changes...'}</span>
           {repoWatch.diff_summary && (
-            <span className="git-diff-summary">({repoWatch.diff_summary.trim()})</span>
+            <span className="git-diff-badge">({repoWatch.diff_summary.trim()})</span>
           )}
         </div>
       )}
 
       {showRepoModal && (
-        <div className="shortcuts-modal-backdrop" onClick={() => setShowRepoModal(false)}>
-          <div className="shortcuts-modal repo-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="terminal-modal-overlay" onClick={() => setShowRepoModal(false)}>
+          <div className="terminal-modal repo-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">
                 <GitBranch size={14} />
@@ -365,8 +367,8 @@ export const Masthead: React.FC<Props> = ({
             </div>
             <form onSubmit={handleAttachRepo} className="repo-form">
               <p className="modal-desc">
-                Enter the absolute or relative path to a local Git repository to stream live commit info, diff
-                summaries, and file contents.
+                Enter the path to a local Git repository to stream live commit info, diff
+                summaries, and file slices directly into clue cards.
               </p>
               <input
                 type="text"

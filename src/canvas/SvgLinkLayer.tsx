@@ -16,72 +16,150 @@ export const SvgLinkLayer: React.FC<Props> = ({
   cursorPos,
   onDeleteLink,
 }) => {
-  const getNodeCenter = (id: number) => {
+  const getNodeAnchor = (id: number) => {
     const node = nodes.find((n) => n.id === id);
     if (!node) return null;
+    // Anchor to top-right pin position of the card header
     return {
-      x: node.x + 150,
-      y: node.y + 120,
+      x: node.x + 256,
+      y: node.y + 20,
     };
   };
 
-  const computePath = (x1: number, y1: number, x2: number, y2: number) => {
+  const computeCurve = (x1: number, y1: number, x2: number, y2: number) => {
     const dx = x2 - x1;
     const dy = y2 - y1;
     const dist = Math.hypot(dx, dy);
-    const sag = Math.min(80, Math.max(25, dist * 0.15));
+    const sag = Math.min(90, Math.max(25, dist * 0.15));
     const cx = (x1 + x2) / 2;
     const cy = (y1 + y2) / 2 + sag;
     return `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`;
   };
 
-  const startNodeCenter = linkStart ? getNodeCenter(linkStart) : null;
+  const startNodeAnchor = linkStart ? getNodeAnchor(linkStart) : null;
 
   return (
-    <svg className="evidence-link-svg-layer">
+    <svg
+      className="evidence-link-svg-layer"
+      width="5000"
+      height="4000"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '5000px',
+        height: '4000px',
+        pointerEvents: 'none',
+        zIndex: 5,
+      }}
+    >
       <defs>
-        <filter id="string-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="0" stdDeviation="2.5" floodColor="#ff4d4f" floodOpacity="0.6" />
+        <filter id="string-glow" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#ff3b30" floodOpacity="0.8" />
         </filter>
         <filter id="pin-shadow" x="-30%" y="-30%" width="160%" height="160%">
-          <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#000" floodOpacity="0.8" />
+          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#000" floodOpacity="0.9" />
         </filter>
+        <linearGradient id="red-thread-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ff453a" />
+          <stop offset="50%" stopColor="#ff3b30" />
+          <stop offset="100%" stopColor="#d70015" />
+        </linearGradient>
       </defs>
 
       {links.map((link) => {
-        const from = getNodeCenter(link.from_id);
-        const to = getNodeCenter(link.to_id);
+        const from = getNodeAnchor(link.from_id);
+        const to = getNodeAnchor(link.to_id);
         if (!from || !to) return null;
 
-        const pathData = computePath(from.x, from.y, to.x, to.y);
+        const pathD = computeCurve(from.x, from.y, to.x, to.y);
 
         return (
-          <g key={`${link.from_id}-${link.to_id}`} className="link-path-group">
+          <g key={`${link.from_id}-${link.to_id}`} className="evidence-link-group">
+            {/* Wide transparent hitbox for easy click/deletion */}
             <path
-              d={pathData}
-              className="evidence-link-hitbox"
+              d={pathD}
+              stroke="transparent"
+              strokeWidth="24"
+              fill="none"
+              style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
               onClick={() => onDeleteLink(link.from_id, link.to_id)}
+            >
+              <title>Click to sever evidence string connection</title>
+            </path>
+
+            {/* Glowing Red Investigation String */}
+            <path
+              d={pathD}
+              stroke="#ff3b30"
+              strokeWidth="2.5"
+              fill="none"
+              filter="url(#string-glow)"
+              className="evidence-string-path"
             />
-            <path d={pathData} className="evidence-link-shadow" />
-            <path d={pathData} className="evidence-link-core" />
-            <circle cx={from.x} cy={from.y} r={4} className="pin-head pin-from" />
-            <circle cx={to.x} cy={to.y} r={4} className="pin-head pin-to" />
+
+            {/* Core Thread */}
+            <path
+              d={pathD}
+              stroke="url(#red-thread-grad)"
+              strokeWidth="2"
+              strokeDasharray="8 2"
+              fill="none"
+            />
+
+            {/* Brass Pins on Clue Cards */}
+            <circle
+              cx={from.x}
+              cy={from.y}
+              r={5}
+              fill="#ff453a"
+              stroke="#fff"
+              strokeWidth="1.5"
+              filter="url(#pin-shadow)"
+            />
+            <circle
+              cx={to.x}
+              cy={to.y}
+              r={5}
+              fill="#ff453a"
+              stroke="#fff"
+              strokeWidth="1.5"
+              filter="url(#pin-shadow)"
+            />
           </g>
         );
       })}
 
-      {startNodeCenter && cursorPos && (
+      {/* Active Linking Rubberband String */}
+      {startNodeAnchor && cursorPos && (
         <g className="elastic-link-in-progress">
           <path
-            d={computePath(startNodeCenter.x, startNodeCenter.y, cursorPos.x, cursorPos.y)}
-            className="evidence-link-preview"
+            d={computeCurve(startNodeAnchor.x, startNodeAnchor.y, cursorPos.x, cursorPos.y)}
+            stroke="#ff3b30"
+            strokeWidth="2"
+            strokeDasharray="6 4"
+            fill="none"
+            filter="url(#string-glow)"
           />
-          <circle cx={startNodeCenter.x} cy={startNodeCenter.y} r={5} className="pin-head-active" />
-          <circle cx={cursorPos.x} cy={cursorPos.y} r={3} className="pin-head-tracking" />
+          <circle
+            cx={startNodeAnchor.x}
+            cy={startNodeAnchor.y}
+            r={6}
+            fill="#ff3b30"
+            stroke="#fff"
+            strokeWidth="2"
+            filter="url(#pin-shadow)"
+          />
+          <circle
+            cx={cursorPos.x}
+            cy={cursorPos.y}
+            r={4}
+            fill="#ffb000"
+            stroke="#fff"
+            strokeWidth="1"
+          />
         </g>
       )}
     </svg>
   );
 };
-
-

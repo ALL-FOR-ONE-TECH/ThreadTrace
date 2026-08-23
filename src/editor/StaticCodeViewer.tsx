@@ -1,4 +1,4 @@
-﻿import React, { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-typescript';
 import 'prismjs/components/prism-javascript';
@@ -15,28 +15,33 @@ interface Props {
 export const StaticCodeViewer: React.FC<Props> = ({ code, filePath, startLine = 1 }) => {
   const lineStart = startLine || 1;
 
-  const html = useMemo(() => {
+  const lines = useMemo(() => {
+    const raw = code || '// No snippet code';
     const ext = filePath?.split('.').pop() || 'ts';
     const lang = ext === 'rs' ? 'rust' : ext === 'json' ? 'json' : ext === 'log' ? 'log' : 'typescript';
     const grammar = Prism.languages[lang] || Prism.languages.javascript || Prism.languages.clike;
-    return Prism.highlight(code || '// empty', grammar, lang);
-  }, [code, filePath]);
 
-  const lines = (code || '// empty').split('\n');
+    return raw.split('\n').map((line, idx) => {
+      const highlighted = Prism.highlight(line || ' ', grammar, lang);
+      return {
+        num: lineStart + idx,
+        html: highlighted,
+      };
+    });
+  }, [code, filePath, lineStart]);
 
   return (
     <div className="static-code-viewer">
-      <div className="gutter-numbers" aria-hidden="true">
-        {lines.map((_, idx) => (
-          <span key={idx} className="line-no">
-            {lineStart + idx}
-          </span>
+      <div className="code-rows-container">
+        {lines.map((l) => (
+          <div key={l.num} className="code-line-row">
+            <span className="line-num-gutter" aria-hidden="true">
+              {l.num}
+            </span>
+            <span className="code-line-tokens" dangerouslySetInnerHTML={{ __html: l.html }} />
+          </div>
         ))}
       </div>
-      <pre className="code-content">
-        <code dangerouslySetInnerHTML={{ __html: html }} />
-      </pre>
     </div>
   );
 };
-
