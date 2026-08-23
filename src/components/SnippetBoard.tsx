@@ -95,7 +95,15 @@ export const SnippetBoard: React.FC = () => {
       if (data.custom_tags && data.custom_tags.length > 0) setCustomTags(data.custom_tags);
       if (data.repo_watch) setRepoWatch(data.repo_watch);
     });
+
+    TauriBridge.getLaunchDir().then((launchDir) => {
+      if (launchDir) {
+        handleWatchRepo(launchDir);
+        setShowExplorer(true);
+      }
+    });
   }, []);
+
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -633,8 +641,8 @@ export const SnippetBoard: React.FC = () => {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onAddSnippet={handleAddSnippet}
-        onOpenFilePicker={() => setShowFilePicker(true)}
         onOpenExplorer={() => setShowExplorer((v) => !v)}
+
         isDemoActive={isDemoActive}
         onNewBoard={handleNewBoard}
         onLoadDemo={handleToggleDemo}

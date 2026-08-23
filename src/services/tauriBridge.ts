@@ -411,7 +411,19 @@ export const TauriBridge = {
       { name: 'README.md', path: `${dirPath}/README.md`, is_dir: false, size_bytes: 3400 },
     ];
   },
+
+  async getLaunchDir(): Promise<string | null> {
+    if (isTauriEnv()) {
+      try {
+        return await invoke<string | null>('get_launch_dir_cmd');
+      } catch (err) {
+        console.warn('Tauri get_launch_dir_cmd failed', err);
+      }
+    }
+    return null;
+  },
 };
+
 
 
 

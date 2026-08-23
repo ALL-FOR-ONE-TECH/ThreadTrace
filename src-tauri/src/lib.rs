@@ -36,9 +36,27 @@ pub fn run() {
                 eprintln!("Warning: Failed to initialize DB tables: {}", e);
             }
 
+            let args: Vec<String> = std::env::args().collect();
+            let launch_dir = if args.len() > 1 && !args[1].starts_with('-') {
+                let p = std::path::Path::new(&args[1]);
+                if p.exists() {
+                    if p.is_dir() {
+                        std::fs::canonicalize(p).map(|cp| cp.to_string_lossy().replace('\\', "/")).ok()
+                    } else if let Some(parent) = p.parent() {
+                        std::fs::canonicalize(parent).map(|cp| cp.to_string_lossy().replace('\\', "/")).ok()
+                    } else {
+                        Some(args[1].clone())
+                    }
+                } else {
+                    Some(args[1].clone())
+                }
+            } else {
+                None
+            };
+
             app.manage(AppState {
                 db: Mutex::new(conn),
-                watched_repo: Mutex::new(None),
+                watched_repo: Mutex::new(launch_dir),
             });
 
             Ok(())
@@ -53,6 +71,7 @@ pub fn run() {
             commands::read_file_snippet_cmd,
             commands::watch_repo_cmd,
             commands::get_git_info_cmd,
+            commands::get_launch_dir_cmd,
             commands::export_board_cmd,
             commands::import_board_cmd,
             commands::clear_board_cmd,
@@ -62,6 +81,7 @@ pub fn run() {
             commands::list_system_drives_cmd,
             commands::read_dir_entries_cmd,
         ])
+
 
 
         .run(tauri::generate_context!())

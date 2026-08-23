@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { TagType, CustomTag, DEFAULT_TAGS, DirEntryItem } from '../types/board';
 import { TauriBridge } from '../services/tauriBridge';
 import {
@@ -47,18 +47,27 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
   const [expandedFolders, setExpandedFolders] = useState<Record<string, DirEntryItem[]>>({});
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState<string>('');
+  const [fullFileContent, setFullFileContent] = useState<string>('');
+  const [selectedSnippet, setSelectedSnippet] = useState<string>('');
   const [lineStart, setLineStart] = useState<number>(1);
   const [lineEnd, setLineEnd] = useState<number>(20);
   const [title, setTitle] = useState('');
   const [tag, setTag] = useState<TagType>('BUG');
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const codePreRef = useRef<HTMLPreElement>(null);
 
-  // Load drives on mount
+  // Load system drives on mount
   useEffect(() => {
     TauriBridge.listSystemDrives().then((d) => setDrives(d));
   }, []);
+
+  // Update currentDir if currentRepoPath changes
+  useEffect(() => {
+    if (currentRepoPath) {
+      setCurrentDir(currentRepoPath);
+    }
+  }, [currentRepoPath]);
 
   // Load directory entries when currentDir changes
   useEffect(() => {
@@ -71,18 +80,40 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
     });
   }, [currentDir, isOpen, onWatchRepo]);
 
-  // Load file preview when selectedFile changes
+  // Load full file content when selectedFile changes
   useEffect(() => {
     if (!selectedFile) {
-      setFileContent('');
+      setFullFileContent('');
+      setSelectedSnippet('');
       return;
     }
-    TauriBridge.readFileBacking(selectedFile, lineStart, lineEnd).then((content) => {
-      setFileContent(content);
+    TauriBridge.readFileBacking(selectedFile, 1, 500).then((content) => {
+      setFullFileContent(content);
+      setSelectedSnippet(content);
       const basename = selectedFile.split(/[\\/]/).pop()?.toUpperCase() || 'SNIPPET';
-      setTitle(`${basename}_L${lineStart}_${lineEnd}`);
+      setTitle(`${basename}_L1_20`);
+      setLineStart(1);
+      const lines = content.split('\n');
+      setLineEnd(Math.min(20, Math.max(1, lines.length)));
     });
-  }, [selectedFile, lineStart, lineEnd]);
+  }, [selectedFile]);
+
+  // Handle Mouse Selection directly inside the Code Viewer
+  const handleMouseSelection = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+
+    const selectedText = selection.toString();
+    if (selectedText.trim().length > 0) {
+      setSelectedSnippet(selectedText);
+      const selectedLineCount = selectedText.split('\n').length;
+      if (selectedFile) {
+        const basename = selectedFile.split(/[\\/]/).pop()?.toUpperCase() || 'SNIPPET';
+        setTitle(`${basename}_SNIPPET`);
+        setLineEnd(lineStart + selectedLineCount - 1);
+      }
+    }
+  };
 
   const toggleFolder = async (folderPath: string) => {
     if (expandedFolders[folderPath]) {
@@ -107,10 +138,13 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
     e.preventDefault();
     if (!selectedFile) return;
 
+    const snippetToPin = selectedSnippet || fullFileContent || '// Empty snippet';
+    const fallbackTitle = selectedFile.split(/[\\/]/).pop()?.toUpperCase() || 'SNIPPET';
+
     onPinClue({
-      title: title.trim() || `${selectedFile.split(/[\\/]/).pop()?.toUpperCase()}_L${lineStart}_${lineEnd}`,
+      title: title.trim() || `${fallbackTitle}_L${lineStart}_${lineEnd}`,
       tag,
-      code: fileContent,
+      code: snippetToPin,
       notes: notes.trim(),
       filePath: selectedFile,
       lineStart,
@@ -131,14 +165,14 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
       <div className="drawer-header">
         <div className="drawer-title">
           <HardDrive size={14} className="amber-glow-icon" />
-          <span>PROJECT FILE EXPLORER</span>
+          <span>PROJECT FILE EXPLORER // SOURCE SLICER</span>
         </div>
         <button type="button" className="drawer-close-btn" onClick={onClose} title="Close Explorer (Esc)">
           <X size={14} />
         </button>
       </div>
 
-      {/* Drive / Root Selector Bar */}
+      {/* Drive / Workspace Selector */}
       <div className="drive-selector-bar">
         <div className="drives-list">
           {drives.map((d) => (
@@ -172,7 +206,7 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
             className="terminal-input dir-path-input"
             value={currentDir}
             onChange={(e) => setCurrentDir(e.target.value)}
-            placeholder="Enter directory path..."
+            placeholder="Enter directory path (e.g. C:/projects/my-app)..."
           />
           <button
             type="button"
@@ -187,23 +221,23 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Filter / Search Box */}
+      {/* Search / Filter */}
       <div className="drawer-search-box">
         <Search size={12} className="search-bar-icon" />
         <input
           type="text"
           className="terminal-input drawer-search-input"
-          placeholder="Filter files..."
+          placeholder="Filter files in directory..."
           value={searchFilter}
           onChange={(e) => setSearchFilter(e.target.value)}
         />
       </div>
 
-      {/* Two Columns: Left File Tree, Right Slicer & Pin */}
+      {/* Two Columns */}
       <div className="drawer-content-grid">
         {/* Left: Tree */}
         <div className="drawer-file-tree">
-          {isLoading && <div className="tree-loading-notice">Loading files...</div>}
+          {isLoading && <div className="tree-loading-notice">Loading directory...</div>}
 
           {filteredEntries.map((item) => (
             <div key={item.path} className="tree-entry-group">
@@ -230,7 +264,7 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
                 <span className="tree-item-name">{item.name}</span>
               </div>
 
-              {/* Expanded sub-folders */}
+              {/* Sub Folders */}
               {item.is_dir && expandedFolders[item.path] && (
                 <div className="tree-sub-list">
                   {expandedFolders[item.path].map((sub) => (
@@ -258,7 +292,7 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
           ))}
         </div>
 
-        {/* Right: Code Slicer & Pin Drop */}
+        {/* Right: Code Slicer & Mouse Drag Selection */}
         <div className="drawer-slicer-pane">
           {selectedFile ? (
             <form onSubmit={handlePin} className="slicer-form">
@@ -277,11 +311,13 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
                     className="terminal-input"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Enter clue title..."
+                    required
                   />
                 </div>
 
                 <div className="form-group-col">
-                  <label className="terminal-label">TAG:</label>
+                  <label className="terminal-label">TAG CLASSIFICATION:</label>
                   <select
                     className="terminal-select"
                     value={tag}
@@ -320,26 +356,37 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
               <div className="form-group-col">
                 <label className="terminal-label">
                   <FileText size={11} />
-                  <span>INVESTIGATION NOTES:</span>
+                  <span>INVESTIGATION NOTES / HYPOTHESIS:</span>
                 </label>
                 <textarea
                   className="terminal-input notes-textarea"
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Notes, bug hypothesis, or trace explanation..."
+                  placeholder="Describe what this code proves, why the bug happens, or reproduction steps..."
                 />
               </div>
 
-              <div className="slicer-preview-box">
-                <pre className="preview-code-box">
-                  <code>{fileContent || '// Selected lines preview...'}</code>
+              {/* Code Viewer with Live Mouse Selection */}
+              <div className="slicer-preview-block">
+                <div className="preview-block-header">
+                  <span>SELECT CODE WITH MOUSE TO PIN SNIPPET:</span>
+                  <span className="selection-hint">Highlight lines below ↴</span>
+                </div>
+
+                <pre
+                  ref={codePreRef}
+                  className="preview-code-box interactive-code-select"
+                  onMouseUp={handleMouseSelection}
+                  title="Highlight any lines with mouse to capture snippet"
+                >
+                  <code>{fullFileContent || '// Empty or binary file'}</code>
                 </pre>
               </div>
 
               <button type="submit" className="terminal-btn primary-btn pin-submit-btn">
                 <Plus size={14} />
-                <span>+ PIN CLUE TO INVESTIGATION CANVAS</span>
+                <span>+ INSERT SELECTION INTO BOARD</span>
               </button>
             </form>
           ) : (

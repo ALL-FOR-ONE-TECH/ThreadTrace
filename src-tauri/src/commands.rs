@@ -108,6 +108,13 @@ pub fn get_git_info_cmd(repo_path: String) -> RepoWatchInfo {
 }
 
 #[tauri::command]
+pub fn get_launch_dir_cmd(state: State<'_, AppState>) -> Option<String> {
+    let watched = state.watched_repo.lock().ok()?;
+    watched.clone()
+}
+
+
+#[tauri::command]
 pub fn export_board_cmd(state: State<'_, AppState>) -> Result<String, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let data = db::get_board_data(&conn).map_err(|e| e.to_string())?;
