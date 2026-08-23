@@ -105,6 +105,8 @@ export const SnippetBoard: React.FC = () => {
   }, []);
 
 
+  const [isSpacePressed, setIsSpacePressed] = useState<boolean>(false);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -113,6 +115,10 @@ export const SnippetBoard: React.FC = () => {
         (e.target as HTMLElement).isContentEditable
       ) {
         return;
+      }
+
+      if (e.code === 'Space') {
+        setIsSpacePressed(true);
       }
 
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
@@ -164,8 +170,19 @@ export const SnippetBoard: React.FC = () => {
         setSelectedFilter('EVIDENCE');
       }
     };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setIsSpacePressed(false);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, [handleUndo, handleRedo]);
 
   useEffect(() => {
@@ -179,9 +196,9 @@ export const SnippetBoard: React.FC = () => {
         const mouseX = e.clientX - boardRect.left;
         const mouseY = e.clientY - boardRect.top;
 
-        const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+        const zoomFactor = e.deltaY < 0 ? 1.05 : 0.95;
         setZoom((prevZoom) => {
-          const nextZoom = Math.min(2.0, Math.max(0.4, +(prevZoom * zoomFactor).toFixed(3)));
+          const nextZoom = Math.min(1.5, Math.max(0.5, +(prevZoom * zoomFactor).toFixed(3)));
           setPan((prevPan) => {
             const worldX = (mouseX - prevPan.x) / prevZoom;
             const worldY = (mouseY - prevPan.y) / prevZoom;
@@ -192,12 +209,20 @@ export const SnippetBoard: React.FC = () => {
           });
           return nextZoom;
         });
+      } else {
+        if (Math.abs(e.deltaX) > 0 || Math.abs(e.deltaY) > 0) {
+          setPan((prev) => ({
+            x: Math.round(prev.x - e.deltaX * 0.8),
+            y: Math.round(prev.y - e.deltaY * 0.8),
+          }));
+        }
       }
     };
 
     boardEl.addEventListener('wheel', handleWheel, { passive: false });
     return () => boardEl.removeEventListener('wheel', handleWheel);
   }, []);
+
 
   const handleTitleChange = (newTitle: string) => {
     setBoardTitle(newTitle);
@@ -445,12 +470,21 @@ export const SnippetBoard: React.FC = () => {
   }, [dragging, resizing, isPanning, panStart, pan, zoom]);
 
   const handleBoardMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    const target = e.target as HTMLElement;
+    const isBackground =
+      target.classList.contains('investigation-board') ||
+      target.classList.contains('canvas-transform-layer') ||
+      target.classList.contains('svg-link-layer') ||
+      target.tagName.toLowerCase() === 'svg' ||
+      target.tagName.toLowerCase() === 'path';
+
+    if (e.button === 1 || isSpacePressed || e.altKey || (e.button === 0 && isBackground)) {
       e.preventDefault();
       setIsPanning(true);
       setPanStart({ x: e.clientX, y: e.clientY });
     }
   };
+
 
   const handleAutoRelayout = () => {
     pushHistory(nodes, links);
@@ -710,9 +744,12 @@ export const SnippetBoard: React.FC = () => {
 
       <main
         ref={boardRef}
-        className={`investigation-board ${isPanning ? 'is-panning-canvas' : ''}`}
+        className={`investigation-board ${isPanning ? 'is-panning-canvas' : ''} ${
+          isSpacePressed ? 'is-space-held' : ''
+        }`}
         onMouseDown={handleBoardMouseDown}
       >
+
         <div
           className="canvas-transform-layer"
           style={{

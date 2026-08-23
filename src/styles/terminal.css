@@ -60,18 +60,9 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
 }
 
-/* CRT Overlays */
+/* CRT Overlays - Clean Crystal Clear */
 .crt-scanline-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  pointer-events: none;
-  z-index: 9999;
-  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.22) 50%);
-  background-size: 100% 4px;
-  opacity: 0.35;
+  display: none;
 }
 
 .crt-flicker-vignette {
@@ -82,8 +73,9 @@ html, body, #root {
   height: 100vh;
   pointer-events: none;
   z-index: 9998;
-  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.75);
+  box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.4);
 }
+
 
 /* Canvas Container */
 .snippet-board-container {
@@ -558,12 +550,17 @@ html, body, #root {
   height: 100%;
   position: relative;
   overflow: hidden;
-  cursor: crosshair;
+  cursor: default;
 }
 
 .investigation-board.is-panning-canvas {
-  cursor: grab;
+  cursor: grabbing !important;
 }
+
+.investigation-board.is-space-held {
+  cursor: grab !important;
+}
+
 
 .canvas-transform-layer {
   position: absolute;
@@ -888,10 +885,17 @@ html, body, #root {
 
 .code-line-tokens {
   color: var(--amber-bright);
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  word-break: normal;
   flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
+
 
 /* Prism Token Colors */
 .token.comment, .token.prolog, .token.doctype, .token.cdata { color: #6a737d; font-style: italic; }
