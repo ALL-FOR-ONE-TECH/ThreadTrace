@@ -1,4 +1,4 @@
-﻿pub mod models;
+pub mod models;
 pub mod db;
 pub mod git_watcher;
 pub mod commands;
@@ -22,8 +22,16 @@ pub fn run() {
                 Err(_) => std::path::PathBuf::from("snippet_board.db"),
             };
 
-            let conn = Connection::open(&db_path).expect("Failed to initialize SQLite database");
-            db::init_db(&conn).expect("Failed to initialize SQLite database tables");
+            let conn = match Connection::open(&db_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Warning: Failed to open DB at {:?}: {}. Falling back to in-memory DB.", db_path, e);
+                    Connection::open_in_memory().unwrap_or_else(|_| Connection::open("snippet_board.db").unwrap())
+                }
+            };
+            if let Err(e) = db::init_db(&conn) {
+                eprintln!("Warning: Failed to initialize DB tables: {}", e);
+            }
 
             app.manage(AppState {
                 db: Mutex::new(conn),
@@ -44,7 +52,9 @@ pub fn run() {
             commands::get_git_info_cmd,
             commands::export_board_cmd,
             commands::import_board_cmd,
+            commands::clear_board_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Tauri application");
 }
+

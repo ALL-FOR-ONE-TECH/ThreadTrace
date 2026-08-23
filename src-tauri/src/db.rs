@@ -44,28 +44,29 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         "#,
     )?;
 
-    // Check if empty and seed initial demo nodes
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM nodes", [], |row| row.get(0))?;
-    if count == 0 {
-        let ts = now_millis();
-        conn.execute(
-            r#"
-            INSERT INTO nodes (id, x, y, title, tag, mode, code, file_path, line_start, line_end, created_at, updated_at)
-            VALUES (1, 80.0, 100.0, 'BUG_RACE_CONDITION_JWT', 'BUG', 'read',
+    Ok(())
+}
+
+pub fn seed_demo_data(conn: &Connection) -> Result<()> {
+    let ts = now_millis();
+    conn.execute(
+        r#"
+        INSERT OR IGNORE INTO nodes (id, x, y, title, tag, mode, code, file_path, line_start, line_end, created_at, updated_at)
+        VALUES (1, 80.0, 100.0, 'BUG_RACE_CONDITION_JWT', 'BUG', 'read',
 '// CRITICAL: Token refresh race condition under concurrent requests
 async function refreshToken() {
   const res = await api.post(''/auth/refresh'');
   localStorage.setItem(''jwt_token'', res.data.token);
   return res.data.token;
 }', NULL, NULL, NULL, ?1, ?1)
-            "#,
-            params![ts],
-        )?;
+        "#,
+        params![ts],
+    )?;
 
-        conn.execute(
-            r#"
-            INSERT INTO nodes (id, x, y, title, tag, mode, code, file_path, line_start, line_end, created_at, updated_at)
-            VALUES (2, 480.0, 180.0, 'FIX_CONCURRENT_MUTEX_QUEUE', 'FIX', 'read',
+    conn.execute(
+        r#"
+        INSERT OR IGNORE INTO nodes (id, x, y, title, tag, mode, code, file_path, line_start, line_end, created_at, updated_at)
+        VALUES (2, 480.0, 180.0, 'FIX_CONCURRENT_MUTEX_QUEUE', 'FIX', 'read',
 '// RESOLUTION: Atomic in-flight lock deduplication
 let inflightRefresh: Promise<string> | null = null;
 
@@ -76,18 +77,18 @@ export async function getValidToken(): Promise<string> {
     .finally(() => { inflightRefresh = null; });
   return inflightRefresh;
 }', NULL, NULL, NULL, ?1, ?1)
-            "#,
-            params![ts],
-        )?;
+        "#,
+        params![ts],
+    )?;
 
-        conn.execute(
-            "INSERT INTO links (from_id, to_id, created_at) VALUES (1, 2, ?1)",
-            params![ts],
-        )?;
-    }
+    conn.execute(
+        "INSERT OR IGNORE INTO links (from_id, to_id, created_at) VALUES (1, 2, ?1)",
+        params![ts],
+    )?;
 
     Ok(())
 }
+
 
 pub fn get_board_data(conn: &Connection) -> Result<BoardData> {
     let mut stmt_nodes = conn.prepare(
@@ -260,19 +261,25 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         init_db(&conn).unwrap();
 
+        let data_empty = get_board_data(&conn).unwrap();
+        assert_eq!(data_empty.nodes.len(), 0, "Clean database starts empty");
+
+        seed_demo_data(&conn).unwrap();
         let data = get_board_data(&conn).unwrap();
-        assert_eq!(data.nodes.len(), 2, "Should pre-seed 2 demo nodes");
-        assert_eq!(data.links.len(), 1, "Should pre-seed 1 demo link");
+        assert_eq!(data.nodes.len(), 2, "Should seed 2 demo nodes");
+        assert_eq!(data.links.len(), 1, "Should seed 1 demo link");
         assert_eq!(data.nodes[0].title, "BUG_RACE_CONDITION_JWT");
         assert_eq!(data.nodes[1].title, "FIX_CONCURRENT_MUTEX_QUEUE");
         assert_eq!(data.links[0].from_id, 1);
         assert_eq!(data.links[0].to_id, 2);
     }
 
+
     #[test]
     fn test_upsert_and_delete_node_cascade() {
         let conn = Connection::open_in_memory().unwrap();
         init_db(&conn).unwrap();
+        seed_demo_data(&conn).unwrap();
 
         let node = SnippetNode {
             id: None,
@@ -310,6 +317,7 @@ mod tests {
     fn test_link_deduplication_and_self_link_prevention() {
         let conn = Connection::open_in_memory().unwrap();
         init_db(&conn).unwrap();
+        seed_demo_data(&conn).unwrap();
 
         let self_link_res = add_link(&conn, 1, 1);
         assert!(self_link_res.is_err());
@@ -318,4 +326,4 @@ mod tests {
         let data = get_board_data(&conn).unwrap();
         assert_eq!(data.links.len(), 1, "Should not create duplicate reverse link");
     }
-}
+}

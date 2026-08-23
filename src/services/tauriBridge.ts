@@ -7,7 +7,15 @@ export function isTauriEnv(): boolean {
 
 const STORAGE_KEY = 'THREAD_TRACE_DATA_V3';
 
-const INITIAL_DEMO_DATA: BoardData = {
+export const INITIAL_BLANK_DATA: BoardData = {
+  title: 'THREAD_TRACE // NEW_INVESTIGATION',
+  custom_tags: DEFAULT_TAGS,
+  nodes: [],
+  links: [],
+  repo_watch: null,
+};
+
+export const DEMO_INVESTIGATION_DATA: BoardData = {
   title: 'THREAD_TRACE // AUTH_INVESTIGATION',
   custom_tags: DEFAULT_TAGS,
   nodes: [
@@ -59,7 +67,7 @@ const INITIAL_DEMO_DATA: BoardData = {
     { id: 2, from_id: 1, to_id: 3, created_at: Date.now() - 900000 }
   ],
   repo_watch: {
-    path: 'X:/Code-Board',
+    path: '.',
     branch: 'main',
     last_commit: '8b91a2c: fix(auth): mutex wrap token refresh (10m ago)',
     diff_summary: ' 2 files changed, 18 insertions(+), 4 deletions(-)',
@@ -71,19 +79,25 @@ function getLocalData(): BoardData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_DEMO_DATA));
-      return INITIAL_DEMO_DATA;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_BLANK_DATA));
+      return INITIAL_BLANK_DATA;
     }
     const parsed = JSON.parse(raw);
     if (!parsed.custom_tags || parsed.custom_tags.length === 0) {
       parsed.custom_tags = DEFAULT_TAGS;
     }
     if (!parsed.title) {
-      parsed.title = 'THREAD_TRACE // AUTH_INVESTIGATION';
+      parsed.title = 'THREAD_TRACE // NEW_INVESTIGATION';
+    }
+    if (!Array.isArray(parsed.nodes)) {
+      parsed.nodes = [];
+    }
+    if (!Array.isArray(parsed.links)) {
+      parsed.links = [];
     }
     return parsed;
   } catch {
-    return INITIAL_DEMO_DATA;
+    return INITIAL_BLANK_DATA;
   }
 }
 
@@ -102,10 +116,10 @@ export const TauriBridge = {
         const board = await invoke<BoardData>('get_board_state');
         const local = getLocalData();
         return {
-          title: local.title || 'THREAD_TRACE // AUTH_INVESTIGATION',
-          custom_tags: local.custom_tags || DEFAULT_TAGS,
-          nodes: board.nodes && board.nodes.length > 0 ? board.nodes : local.nodes,
-          links: board.links && board.links.length > 0 ? board.links : local.links,
+          title: board.title || local.title || 'THREAD_TRACE // NEW_INVESTIGATION',
+          custom_tags: local.custom_tags && local.custom_tags.length > 0 ? local.custom_tags : DEFAULT_TAGS,
+          nodes: board.nodes || [],
+          links: board.links || [],
           repo_watch: board.repo_watch || local.repo_watch,
         };
       } catch (err) {
@@ -198,6 +212,58 @@ export const TauriBridge = {
       (l) => !((l.from_id === fromId && l.to_id === toId) || (l.from_id === toId && l.to_id === fromId))
     );
     saveLocalData(current);
+  },
+
+  async clearBoard(): Promise<BoardData> {
+    if (isTauriEnv()) {
+      try {
+        await invoke('clear_board_cmd');
+      } catch (err) {
+        console.warn('Tauri clear_board_cmd failed', err);
+      }
+    }
+    const blank: BoardData = {
+      title: 'THREAD_TRACE // NEW_INVESTIGATION',
+      custom_tags: DEFAULT_TAGS,
+      nodes: [],
+      links: [],
+      repo_watch: null,
+    };
+    saveLocalData(blank);
+    return blank;
+  },
+
+  async loadDemoData(): Promise<BoardData> {
+    if (isTauriEnv()) {
+      try {
+        await invoke('clear_board_cmd');
+        for (const n of DEMO_INVESTIGATION_DATA.nodes) {
+          await invoke('save_node_cmd', { node: n });
+        }
+        for (const l of DEMO_INVESTIGATION_DATA.links) {
+          await invoke('add_link_cmd', { fromId: l.from_id, toId: l.to_id });
+        }
+        const refreshed = await invoke<BoardData>('get_board_state');
+        saveLocalData({
+          title: DEMO_INVESTIGATION_DATA.title,
+          custom_tags: DEFAULT_TAGS,
+          nodes: refreshed.nodes || DEMO_INVESTIGATION_DATA.nodes,
+          links: refreshed.links || DEMO_INVESTIGATION_DATA.links,
+          repo_watch: DEMO_INVESTIGATION_DATA.repo_watch,
+        });
+        return {
+          title: DEMO_INVESTIGATION_DATA.title,
+          custom_tags: DEFAULT_TAGS,
+          nodes: refreshed.nodes || DEMO_INVESTIGATION_DATA.nodes,
+          links: refreshed.links || DEMO_INVESTIGATION_DATA.links,
+          repo_watch: DEMO_INVESTIGATION_DATA.repo_watch,
+        };
+      } catch (err) {
+        console.warn('Tauri demo load failed, saving locally', err);
+      }
+    }
+    saveLocalData(DEMO_INVESTIGATION_DATA);
+    return DEMO_INVESTIGATION_DATA;
   },
 
   async readFileBacking(filePath: string, lineStart?: number, lineEnd?: number): Promise<string> {

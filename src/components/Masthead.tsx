@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { TagType, RepoWatchInfo, CustomTag, DEFAULT_TAGS } from '../types/board';
+import appLogo from '../assets/logo.png';
 import {
   Plus,
   GitBranch,
@@ -11,7 +12,9 @@ import {
   HelpCircle,
   Tag,
   Edit2,
-  Check
+  Check,
+  FilePlus,
+  Sparkles
 } from 'lucide-react';
 
 interface Props {
@@ -25,6 +28,8 @@ interface Props {
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onAddSnippet: () => void;
+  onNewBoard: () => void;
+  onLoadDemo: () => void;
   onAutoRelayout: () => void;
   onExport: () => void;
   onExportDossier: () => void;
@@ -38,7 +43,7 @@ interface Props {
 }
 
 export const Masthead: React.FC<Props> = ({
-  title = 'THREAD_TRACE // AUTH_INVESTIGATION',
+  title = 'THREAD_TRACE // NEW_INVESTIGATION',
   onTitleChange,
   nodeCount,
   linkCount,
@@ -48,6 +53,8 @@ export const Masthead: React.FC<Props> = ({
   searchQuery,
   onSearchChange,
   onAddSnippet,
+  onNewBoard,
+  onLoadDemo,
   onAutoRelayout,
   onExport,
   onExportDossier,
@@ -60,7 +67,7 @@ export const Masthead: React.FC<Props> = ({
   isTauri,
 }) => {
   const [showRepoModal, setShowRepoModal] = useState(false);
-  const [repoPathInput, setRepoPathInput] = useState(repoWatch?.path || 'X:/Code-Board');
+  const [repoPathInput, setRepoPathInput] = useState(repoWatch?.path || '');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(title);
 
@@ -74,7 +81,7 @@ export const Masthead: React.FC<Props> = ({
 
   const handleFinishEditTitle = () => {
     setIsEditingTitle(false);
-    const clean = titleInput.trim().toUpperCase() || 'THREAD_TRACE // INVESTIGATION';
+    const clean = titleInput.trim().toUpperCase() || 'THREAD_TRACE // NEW_INVESTIGATION';
     setTitleInput(clean);
     if (onTitleChange) onTitleChange(clean);
   };
@@ -95,12 +102,9 @@ export const Masthead: React.FC<Props> = ({
           <div className="masthead-title-row">
             <div className="app-logo-wrapper" title="THREAD_TRACE // Terminal Investigation Canvas">
               <img
-                src="/logo.png"
+                src={appLogo}
                 alt="ThreadTrace Logo"
                 className="app-logo-img"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
               />
             </div>
 
@@ -172,7 +176,6 @@ export const Masthead: React.FC<Props> = ({
           </div>
         </div>
 
-
         <div className="masthead-toolbar">
           <div className="search-bar-input-group">
             <Search size={12} className="search-bar-icon" />
@@ -208,6 +211,26 @@ export const Masthead: React.FC<Props> = ({
               ))}
             </select>
           </div>
+
+          <button
+            type="button"
+            className="terminal-btn"
+            onClick={onNewBoard}
+            title="Start fresh new investigation (clears board)"
+          >
+            <FilePlus size={12} />
+            <span>NEW</span>
+          </button>
+
+          <button
+            type="button"
+            className="terminal-btn"
+            onClick={onLoadDemo}
+            title="Load sample case investigation clues"
+          >
+            <Sparkles size={12} />
+            <span>DEMO</span>
+          </button>
 
           <button
             type="button"
@@ -313,7 +336,7 @@ export const Masthead: React.FC<Props> = ({
             </div>
             <form onSubmit={handleAttachRepo} className="repo-form">
               <p className="modal-desc">
-                Enter the absolute root path to a local Git repository to stream live commit info, diff
+                Enter the absolute or relative path to a local Git repository to stream live commit info, diff
                 summaries, and file contents.
               </p>
               <input
@@ -321,7 +344,7 @@ export const Masthead: React.FC<Props> = ({
                 className="terminal-input repo-path-input"
                 value={repoPathInput}
                 onChange={(e) => setRepoPathInput(e.target.value)}
-                placeholder="X:/Code-Board or C:/projects/my-app"
+                placeholder="C:/projects/my-app or /home/user/project"
                 autoFocus
               />
               <div className="modal-footer">
@@ -343,4 +366,3 @@ export const Masthead: React.FC<Props> = ({
     </header>
   );
 };
-

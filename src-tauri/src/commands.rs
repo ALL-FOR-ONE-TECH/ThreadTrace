@@ -1,4 +1,4 @@
-﻿use std::sync::Mutex;
+use std::sync::Mutex;
 use tauri::State;
 use rusqlite::Connection;
 use crate::models::{BoardData, FileSnippetResponse, RepoWatchInfo, SnippetNode};
@@ -106,4 +106,15 @@ pub fn import_board_cmd(state: State<'_, AppState>, json_content: String) -> Res
     }
 
     db::get_board_data(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn clear_board_cmd(state: State<'_, AppState>) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM links", []).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM nodes", []).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM repo_watch", []).map_err(|e| e.to_string())?;
+    let mut watched = state.watched_repo.lock().map_err(|e| e.to_string())?;
+    *watched = None;
+    Ok(())
 }

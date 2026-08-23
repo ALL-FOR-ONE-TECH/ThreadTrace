@@ -9,10 +9,10 @@ import { ShortcutsModal } from './ShortcutsModal';
 import { TagManagerModal } from './TagManagerModal';
 import { SystemTelemetryHUD } from './SystemTelemetryHUD';
 import { generateInvestigationMarkdown } from '../services/dossierExport';
-import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Plus, Sparkles, FolderSearch } from 'lucide-react';
 
 export const SnippetBoard: React.FC = () => {
-  const [boardTitle, setBoardTitle] = useState<string>('THREAD_TRACE // AUTH_INVESTIGATION');
+  const [boardTitle, setBoardTitle] = useState<string>('THREAD_TRACE // NEW_INVESTIGATION');
   const [nodes, setNodes] = useState<SnippetNode[]>([]);
   const [links, setLinks] = useState<SnippetLink[]>([]);
   const [customTags, setCustomTags] = useState<CustomTag[]>(DEFAULT_TAGS);
@@ -131,8 +131,8 @@ export const SnippetBoard: React.FC = () => {
       id: 0,
       x,
       y,
-      title: 'NEW_SNIPPET',
-      tag: 'TASK',
+      title: `CLUE_NODE_0${count + 1}`,
+      tag: 'BUG',
       mode: 'read',
       code: '// Type snippet or attach file path above\nfunction handleInvestigation() {\n  // TODO: analyze clue\n}',
       file_path: null,
@@ -143,6 +143,30 @@ export const SnippetBoard: React.FC = () => {
     const newId = await TauriBridge.saveNode(newNode);
     newNode.id = newId;
     setNodes((prev) => [...prev, newNode]);
+  };
+
+  const handleNewBoard = async () => {
+    if (nodes.length > 0) {
+      const confirmClear = window.confirm('Start a new investigation? This will clear all clues on the canvas.');
+      if (!confirmClear) return;
+    }
+    const blank = await TauriBridge.clearBoard();
+    setNodes([]);
+    setLinks([]);
+    setBoardTitle(blank.title || 'THREAD_TRACE // NEW_INVESTIGATION');
+    setRepoWatch(null);
+    setZoom(1.0);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const handleLoadDemo = async () => {
+    const demo = await TauriBridge.loadDemoData();
+    setNodes(demo.nodes || []);
+    setLinks(demo.links || []);
+    setBoardTitle(demo.title || 'THREAD_TRACE // AUTH_INVESTIGATION');
+    setRepoWatch(demo.repo_watch || null);
+    setZoom(1.0);
+    setPan({ x: 0, y: 0 });
   };
 
   const handleUpdateNode = useCallback((updated: SnippetNode) => {
@@ -373,6 +397,8 @@ export const SnippetBoard: React.FC = () => {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onAddSnippet={handleAddSnippet}
+        onNewBoard={handleNewBoard}
+        onLoadDemo={handleLoadDemo}
         onAutoRelayout={handleAutoRelayout}
         onExport={handleExport}
         onExportDossier={handleExportDossier}
@@ -443,6 +469,37 @@ export const SnippetBoard: React.FC = () => {
             onDeleteLink={handleDeleteLink}
           />
 
+          {filteredNodes.length === 0 && !searchQuery && (
+            <div className="empty-canvas-welcome-banner">
+              <div className="empty-banner-header">
+                <FolderSearch size={24} className="amber-glow-icon" />
+                <h2>[CANVAS_EMPTY // READY FOR CLUES]</h2>
+              </div>
+              <p className="empty-banner-text">
+                No investigation clues pinned to this evidence board yet.
+                Start pinning code snippets, trace race conditions, or load the demo investigation.
+              </p>
+              <div className="empty-banner-actions">
+                <button
+                  type="button"
+                  className="terminal-btn primary-btn"
+                  onClick={handleAddSnippet}
+                >
+                  <Plus size={14} />
+                  <span>+ PIN FIRST CLUE (N)</span>
+                </button>
+                <button
+                  type="button"
+                  className="terminal-btn"
+                  onClick={handleLoadDemo}
+                >
+                  <Sparkles size={14} />
+                  <span>⚡ LOAD DEMO CASE</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {filteredNodes.map((node) => (
             <SnippetCard
               key={node.id}
@@ -491,4 +548,3 @@ export const SnippetBoard: React.FC = () => {
     </div>
   );
 };
-
