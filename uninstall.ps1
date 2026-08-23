@@ -1,12 +1,10 @@
-﻿# ==============================================================================
+# ==============================================================================
 # ThreadTrace - Windows Uninstaller
 # Cleans up app installation while safely preserving project files & databases.
 # ==============================================================================
 
-[CmdletBinding()]
-param(
-    [switch]$Force = $false
-)
+$ErrorActionPreference = "SilentlyContinue"
+
 
 Write-Host "============================================================" -ForegroundColor Yellow
 Write-Host "  THREAD_TRACE // Windows Uninstaller" -ForegroundColor Yellow

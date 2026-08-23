@@ -5,12 +5,10 @@
 # License: MIT Open Source
 # ==============================================================================
 
-[CmdletBinding()]
-param(
-    [string]$Version = "latest",
-    [switch]$Portable = $false,
-    [switch]$NoLaunch = $false
-)
+if (-not (Get-Variable -Name "Version" -Scope Global -ErrorAction SilentlyContinue)) { $Version = "latest" }
+if (-not (Get-Variable -Name "Portable" -Scope Global -ErrorAction SilentlyContinue)) { $Portable = $false }
+if (-not (Get-Variable -Name "NoLaunch" -Scope Global -ErrorAction SilentlyContinue)) { $NoLaunch = $false }
+
 
 $ErrorActionPreference = "Stop"
 try {
