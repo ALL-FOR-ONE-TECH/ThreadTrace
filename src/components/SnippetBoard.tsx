@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { SnippetNode, SnippetLink, TagType, DraggingState, RepoWatchInfo, CustomTag, DEFAULT_TAGS } from '../types/board';
+import {
+  SnippetNode,
+  SnippetLink,
+  TagType,
+  DraggingState,
+  ResizingState,
+  RepoWatchInfo,
+  CustomTag,
+  DEFAULT_TAGS,
+} from '../types/board';
 import { TauriBridge, isTauriEnv } from '../services/tauriBridge';
 import { Masthead } from './Masthead';
 import { SnippetCard } from './SnippetCard';
@@ -8,10 +17,11 @@ import { Minimap } from '../canvas/Minimap';
 import { ShortcutsModal } from './ShortcutsModal';
 import { TagManagerModal } from './TagManagerModal';
 import { CommandPaletteModal } from './CommandPaletteModal';
+import { FilePickerModal } from './FilePickerModal';
 import { SystemTelemetryHUD } from './SystemTelemetryHUD';
 import { generateInvestigationMarkdown } from '../services/dossierExport';
 import { generateInvestigationHtml } from '../services/htmlDossierExport';
-import { ZoomIn, ZoomOut, Maximize2, Plus, Sparkles, FolderSearch } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Plus, Sparkles, FolderSearch, FolderOpen } from 'lucide-react';
 
 export const SnippetBoard: React.FC = () => {
   const [boardTitle, setBoardTitle] = useState<string>('THREAD_TRACE // NEW_INVESTIGATION');
@@ -20,12 +30,14 @@ export const SnippetBoard: React.FC = () => {
   const [customTags, setCustomTags] = useState<CustomTag[]>(DEFAULT_TAGS);
   const [linkStart, setLinkStart] = useState<number | null>(null);
   const [dragging, setDragging] = useState<DraggingState | null>(null);
+  const [resizing, setResizing] = useState<ResizingState | null>(null);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<TagType | 'ALL'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showShortcuts, setShowShortcuts] = useState<boolean>(false);
   const [showTagManager, setShowTagManager] = useState<boolean>(false);
   const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
+  const [showFilePicker, setShowFilePicker] = useState<boolean>(false);
   const [historyStack, setHistoryStack] = useState<{ nodes: SnippetNode[]; links: SnippetLink[] }[]>([]);
   const [redoStack, setRedoStack] = useState<{ nodes: SnippetNode[]; links: SnippetLink[] }[]>([]);
   const [repoWatch, setRepoWatch] = useState<RepoWatchInfo | null>(null);
@@ -106,9 +118,13 @@ export const SnippetBoard: React.FC = () => {
         setShowShortcuts(false);
         setShowTagManager(false);
         setShowCommandPalette(false);
+        setShowFilePicker(false);
       } else if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         handleAddSnippet();
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        setShowFilePicker(true);
       } else if (e.key === '?') {
         e.preventDefault();
         setShowShortcuts((prev) => !prev);
@@ -179,54 +195,85 @@ export const SnippetBoard: React.FC = () => {
     const x = Math.max(40, 80 + cascadeOffset - pan.x);
     const y = Math.max(40, 60 + cascadeOffset - pan.y);
 
+    const defaultTitles = [
+      'AUTH_RACE_CONDITION',
+      'NULL_POINTER_EXCEPTION',
+      'MUTEX_LOCK_CONTENTION',
+      'EVENT_LOOP_BLOCKER',
+      'MEMORY_LEAK_BUFFER',
+    ];
+    const sampleTitle = defaultTitles[count % defaultTitles.length];
+
     const newNode: SnippetNode = {
       id: 0,
       x,
       y,
-      title: `CLUE_NODE_0${count + 1}`,
+      width: 350,
+      height: 270,
+      title: `${sampleTitle}_${count + 1}`,
       tag: 'BUG',
       mode: 'read',
       code: '// Type snippet or attach file path above\nfunction handleInvestigation() {\n  // TODO: analyze clue\n}',
+      notes: '',
       file_path: null,
-      line_start: null,
-      line_end: null,
+      line_start: 1,
+      line_end: 4,
+      syncStatus: 'DETACHED',
+      created_at: Date.now(),
+      updated_at: Date.now(),
     };
 
-    const newId = await TauriBridge.saveNode(newNode);
-    newNode.id = newId;
+    const assignedId = await TauriBridge.saveNode(newNode);
+    newNode.id = assignedId;
     setNodes((prev) => [...prev, newNode]);
   };
 
-  const handleNewBoard = async () => {
-    if (nodes.length > 0) {
-      const confirmClear = window.confirm('Start a new investigation? This will clear all clues on the canvas.');
-      if (!confirmClear) return;
-    }
+  const handlePinFromPicker = async (data: {
+    title: string;
+    tag: TagType;
+    code: string;
+    notes: string;
+    filePath: string;
+    lineStart: number;
+    lineEnd: number;
+  }) => {
     pushHistory(nodes, links);
-    const blank = await TauriBridge.clearBoard();
-    setNodes([]);
-    setLinks([]);
-    setBoardTitle(blank.title || 'THREAD_TRACE // NEW_INVESTIGATION');
-    setRepoWatch(null);
-    setZoom(1.0);
-    setPan({ x: 0, y: 0 });
+    const count = nodes.length;
+    const cascadeOffset = (count % 8) * 35;
+    const x = Math.max(40, 80 + cascadeOffset - pan.x);
+    const y = Math.max(40, 60 + cascadeOffset - pan.y);
+
+    const newNode: SnippetNode = {
+      id: 0,
+      x,
+      y,
+      width: 380,
+      height: 290,
+      title: data.title,
+      tag: data.tag,
+      mode: 'read',
+      code: data.code,
+      notes: data.notes || '',
+      file_path: data.filePath,
+      line_start: data.lineStart,
+      line_end: data.lineEnd,
+      syncStatus: 'SYNCED',
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    };
+
+    const assignedId = await TauriBridge.saveNode(newNode);
+    newNode.id = assignedId;
+    setNodes((prev) => [...prev, newNode]);
   };
 
-  const handleLoadDemo = async () => {
-    pushHistory(nodes, links);
-    const demo = await TauriBridge.loadDemoData();
-    setNodes(demo.nodes || []);
-    setLinks(demo.links || []);
-    setBoardTitle(demo.title || 'THREAD_TRACE // AUTH_INVESTIGATION');
-    setRepoWatch(demo.repo_watch || null);
-    setZoom(1.0);
-    setPan({ x: 0, y: 0 });
-  };
-
-  const handleUpdateNode = useCallback((updated: SnippetNode) => {
-    setNodes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
-    TauriBridge.saveNode(updated);
-  }, []);
+  const handleUpdateNode = useCallback(
+    (updated: SnippetNode) => {
+      setNodes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+      TauriBridge.saveNode(updated);
+    },
+    []
+  );
 
   const handleDeleteNode = useCallback(
     async (id: number) => {
@@ -234,9 +281,7 @@ export const SnippetBoard: React.FC = () => {
       await TauriBridge.deleteNode(id);
       setNodes((prev) => prev.filter((n) => n.id !== id));
       setLinks((prev) => prev.filter((l) => l.from_id !== id && l.to_id !== id));
-      if (linkStart === id) {
-        setLinkStart(null);
-      }
+      if (linkStart === id) setLinkStart(null);
     },
     [linkStart, pushHistory]
   );
@@ -292,6 +337,23 @@ export const SnippetBoard: React.FC = () => {
     });
   };
 
+  const handleMouseDownResize = (e: React.MouseEvent, id: number) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    const targetNode = nodes.find((n) => n.id === id);
+    if (!targetNode) return;
+
+    pushHistory(nodesRef.current, linksRef.current);
+
+    setResizing({
+      id,
+      initialWidth: targetNode.width || 340,
+      initialHeight: targetNode.height || 260,
+      initialMouseX: e.clientX,
+      initialMouseY: e.clientY,
+    });
+  };
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!boardRef.current) return;
@@ -311,6 +373,18 @@ export const SnippetBoard: React.FC = () => {
             prev.map((n) => (n.id === dragging.id ? { ...n, x: clampedX, y: clampedY } : n))
           );
         });
+      } else if (resizing) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+          const dx = (e.clientX - resizing.initialMouseX) / zoom;
+          const dy = (e.clientY - resizing.initialMouseY) / zoom;
+          const newWidth = Math.max(260, Math.min(900, Math.round(resizing.initialWidth + dx)));
+          const newHeight = Math.max(180, Math.min(800, Math.round(resizing.initialHeight + dy)));
+
+          setNodes((prev) =>
+            prev.map((n) => (n.id === resizing.id ? { ...n, width: newWidth, height: newHeight } : n))
+          );
+        });
       } else if (isPanning) {
         const dx = e.clientX - panStart.x;
         const dy = e.clientY - panStart.y;
@@ -327,6 +401,13 @@ export const SnippetBoard: React.FC = () => {
         }
         setDragging(null);
       }
+      if (resizing) {
+        const finishedNode = nodesRef.current.find((n) => n.id === resizing.id);
+        if (finishedNode) {
+          TauriBridge.saveNode(finishedNode);
+        }
+        setResizing(null);
+      }
       if (isPanning) {
         setIsPanning(false);
       }
@@ -340,7 +421,7 @@ export const SnippetBoard: React.FC = () => {
       window.removeEventListener('mouseup', handleMouseUp);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [dragging, isPanning, panStart, pan, zoom]);
+  }, [dragging, resizing, isPanning, panStart, pan, zoom]);
 
   const handleBoardMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
@@ -352,8 +433,8 @@ export const SnippetBoard: React.FC = () => {
 
   const handleAutoRelayout = () => {
     pushHistory(nodes, links);
-    const spacingX = 320;
-    const spacingY = 260;
+    const spacingX = 360;
+    const spacingY = 300;
     const cols = Math.max(2, Math.floor((window.innerWidth - 100) / spacingX));
 
     const updated = nodes.map((node, idx) => {
@@ -378,7 +459,6 @@ export const SnippetBoard: React.FC = () => {
     a.href = url;
     a.download = `thread_trace_${Date.now()}.json`;
     a.click();
-    URL.revokeObjectURL(url);
   };
 
   const handleExportDossier = () => {
@@ -392,9 +472,8 @@ export const SnippetBoard: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `investigation_dossier_${Date.now()}.md`;
+    a.download = `thread_trace_dossier_${Date.now()}.md`;
     a.click();
-    URL.revokeObjectURL(url);
   };
 
   const handleExportHtmlDossier = () => {
@@ -408,28 +487,48 @@ export const SnippetBoard: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `investigation_dossier_${Date.now()}.html`;
+    a.download = `thread_trace_report_${Date.now()}.html`;
     a.click();
-    URL.revokeObjectURL(url);
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json';
+    input.accept = 'application/json';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
         pushHistory(nodes, links);
         const text = await file.text();
-        const data = await TauriBridge.importBoard(text);
-        setNodes(data.nodes || []);
-        setLinks(data.links || []);
-        if (data.title) setBoardTitle(data.title);
-        if (data.custom_tags) setCustomTags(data.custom_tags);
+        const imported = await TauriBridge.importBoard(text);
+        setNodes(imported.nodes || []);
+        setLinks(imported.links || []);
+        if (imported.title) setBoardTitle(imported.title);
+        if (imported.custom_tags && imported.custom_tags.length > 0) setCustomTags(imported.custom_tags);
       }
     };
     input.click();
+  };
+
+  const handleNewBoard = async () => {
+    if (nodes.length > 0) {
+      const confirmed = window.confirm('Clear current investigation board? Unsaved layout changes will be lost.');
+      if (!confirmed) return;
+    }
+    pushHistory(nodes, links);
+    const blank = await TauriBridge.clearBoard();
+    setNodes(blank.nodes);
+    setLinks(blank.links);
+    setBoardTitle(blank.title || 'THREAD_TRACE // NEW_INVESTIGATION');
+  };
+
+  const handleLoadDemo = async () => {
+    pushHistory(nodes, links);
+    const demo = await TauriBridge.loadDemoData();
+    setNodes(demo.nodes);
+    setLinks(demo.links);
+    setBoardTitle(demo.title || 'THREAD_TRACE // AUTH_INVESTIGATION');
+    if (demo.repo_watch) setRepoWatch(demo.repo_watch);
   };
 
   const handleWatchRepo = async (path: string) => {
@@ -437,50 +536,52 @@ export const SnippetBoard: React.FC = () => {
     setRepoWatch(info);
   };
 
-  const handleFocusNode = useCallback((targetNode: SnippetNode) => {
-    if (!boardRef.current) return;
-    const boardRect = boardRef.current.getBoundingClientRect();
-    const centerX = boardRect.width / 2;
-    const centerY = boardRect.height / 2;
-    setZoom(1.0);
-    setPan({
-      x: centerX - targetNode.x - 140,
-      y: centerY - targetNode.y - 100,
-    });
-  }, []);
-
-  const nodeMatchesSearch = useCallback((n: SnippetNode, q: string): boolean => {
-    if (!q.trim()) return true;
-    const lower = q.toLowerCase();
-    return (
-      n.title.toLowerCase().includes(lower) ||
-      (n.code || '').toLowerCase().includes(lower) ||
-      (n.file_path || '').toLowerCase().includes(lower) ||
-      n.tag.toLowerCase().includes(lower)
-    );
-  }, []);
-
-  const filteredByTagNodes = useMemo(() => {
-    return nodes.filter((n) => {
-      if (selectedFilter !== 'ALL' && n.tag !== selectedFilter) return false;
-      return true;
-    });
-  }, [nodes, selectedFilter]);
-
   const tagCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const t of customTags) {
+    const counts: Record<string, number> = {
+      BUG: 0,
+      TASK: 0,
+      FIX: 0,
+      EVIDENCE: 0,
+    };
+    customTags.forEach((t) => {
       counts[t.id] = 0;
-    }
-    for (const n of nodes) {
+    });
+    nodes.forEach((n) => {
       counts[n.tag] = (counts[n.tag] || 0) + 1;
-    }
+    });
     return counts;
   }, [nodes, customTags]);
 
-  const activeEditors = useMemo(() => {
-    return nodes.filter((n) => n.mode === 'write').length;
-  }, [nodes]);
+  const filteredByTagNodes = useMemo(() => {
+    if (selectedFilter === 'ALL') return nodes;
+    return nodes.filter((n) => n.tag === selectedFilter);
+  }, [nodes, selectedFilter]);
+
+  const nodeMatchesSearch = (n: SnippetNode, query: string): boolean => {
+    if (!query.trim()) return true;
+    const q = query.toLowerCase();
+    return (
+      n.title.toLowerCase().includes(q) ||
+      (n.code && n.code.toLowerCase().includes(q)) ||
+      (n.notes && n.notes.toLowerCase().includes(q)) ||
+      (n.file_path && n.file_path.toLowerCase().includes(q)) ||
+      n.tag.toLowerCase().includes(q)
+    );
+  };
+
+  const handleFocusNode = (nodeId: number) => {
+    const target = nodes.find((n) => n.id === nodeId);
+    if (!target) return;
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const targetX = viewportWidth / 2 - (target.x + 160) * zoom;
+    const targetY = viewportHeight / 2 - (target.y + 130) * zoom;
+
+    setPan({ x: Math.round(targetX), y: Math.round(targetY) });
+  };
+
+  const activeEditors = useMemo(() => nodes.filter((n) => n.mode === 'write').length, [nodes]);
 
   return (
     <div className="snippet-board-container">
@@ -498,6 +599,7 @@ export const SnippetBoard: React.FC = () => {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onAddSnippet={handleAddSnippet}
+        onOpenFilePicker={() => setShowFilePicker(true)}
         onNewBoard={handleNewBoard}
         onLoadDemo={handleLoadDemo}
         onAutoRelayout={handleAutoRelayout}
@@ -579,9 +681,17 @@ export const SnippetBoard: React.FC = () => {
               </div>
               <p className="empty-banner-text">
                 No investigation clues pinned to this evidence board yet.
-                Start pinning code snippets, trace race conditions, or load the demo investigation.
+                Browse source files to slice code, pin hypotheses, or load the demo investigation.
               </p>
               <div className="empty-banner-actions">
+                <button
+                  type="button"
+                  className="terminal-btn"
+                  onClick={() => setShowFilePicker(true)}
+                >
+                  <FolderOpen size={14} />
+                  <span>📂 ATTACH FROM FILE (F)</span>
+                </button>
                 <button
                   type="button"
                   className="terminal-btn primary-btn"
@@ -615,6 +725,7 @@ export const SnippetBoard: React.FC = () => {
                 isDimmed={isDimmed}
                 isHighlighted={isHighlighted}
                 onMouseDownHeader={handleMouseDownHeader}
+                onMouseDownResize={handleMouseDownResize}
                 onUpdateNode={handleUpdateNode}
                 onDeleteNode={handleDeleteNode}
                 onToggleLink={handleToggleLink}
@@ -625,6 +736,16 @@ export const SnippetBoard: React.FC = () => {
           })}
         </div>
       </main>
+
+      {showFilePicker && (
+        <FilePickerModal
+          isOpen={showFilePicker}
+          onClose={() => setShowFilePicker(false)}
+          onPinClue={handlePinFromPicker}
+          repoPath={repoWatch?.path}
+          customTags={customTags}
+        />
+      )}
 
       {showTagManager && (
         <TagManagerModal
@@ -639,8 +760,9 @@ export const SnippetBoard: React.FC = () => {
       {showCommandPalette && (
         <CommandPaletteModal
           nodes={nodes}
-          onSelectNode={handleFocusNode}
+          onSelectNode={(node) => handleFocusNode(node.id)}
           onAddSnippet={handleAddSnippet}
+
           onLoadDemo={handleLoadDemo}
           onClearBoard={handleNewBoard}
           onAutoRelayout={handleAutoRelayout}
@@ -665,6 +787,7 @@ export const SnippetBoard: React.FC = () => {
           />
         </div>
         <div className="footer-right">
+          <span className="shortcut-badge">F: ATTACH FILE</span>
           <span className="shortcut-badge">CTRL+K: PALETTE</span>
           <span className="shortcut-badge">CTRL+Z: UNDO</span>
           <span className="shortcut-badge">N: ADD</span>

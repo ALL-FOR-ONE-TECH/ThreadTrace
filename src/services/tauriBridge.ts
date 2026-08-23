@@ -348,5 +348,43 @@ export const TauriBridge = {
       uptime_seconds: Math.floor(performance.now() / 1000),
     };
   },
+
+  async writeFileSnippet(filePath: string, lineStart: number, lineEnd: number, newContent: string): Promise<boolean> {
+    if (isTauriEnv()) {
+      try {
+        await invoke('write_file_snippet_cmd', {
+          filePath,
+          lineStart,
+          lineEnd,
+          newContent,
+        });
+        return true;
+      } catch (err) {
+        console.error('Tauri write_file_snippet_cmd failed', err);
+        throw err;
+      }
+    }
+    return true;
+  },
+
+  async listRepoFiles(repoPath: string): Promise<string[]> {
+    if (isTauriEnv()) {
+      try {
+        return await invoke<string[]>('list_repo_files_cmd', { repoPath });
+      } catch (err) {
+        console.warn('Tauri list_repo_files_cmd failed', err);
+      }
+    }
+    return [
+      'src/App.tsx',
+      'src/components/SnippetBoard.tsx',
+      'src/components/SnippetCard.tsx',
+      'src/services/auth.ts',
+      'src/types/board.ts',
+      'package.json',
+      'README.md',
+    ];
+  },
 };
+
 

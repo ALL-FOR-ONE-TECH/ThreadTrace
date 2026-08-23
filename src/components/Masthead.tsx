@@ -17,7 +17,9 @@ import {
   Sparkles,
   FileCode,
   Terminal,
+  FolderOpen,
 } from 'lucide-react';
+
 
 
 interface Props {
@@ -38,6 +40,7 @@ interface Props {
   onExportDossier: () => void;
   onExportHtmlDossier?: () => void;
   onOpenCommandPalette?: () => void;
+  onOpenFilePicker?: () => void;
   onImport: () => void;
   onOpenShortcuts: () => void;
   onOpenTagManager?: () => void;
@@ -46,6 +49,7 @@ interface Props {
   onWatchRepo: (path: string) => void;
   isTauri: boolean;
 }
+
 
 export const Masthead: React.FC<Props> = ({
   title = 'THREAD_TRACE // NEW_INVESTIGATION',
@@ -65,7 +69,9 @@ export const Masthead: React.FC<Props> = ({
   onExportDossier,
   onExportHtmlDossier,
   onOpenCommandPalette,
+  onOpenFilePicker,
   onImport,
+
   onOpenShortcuts,
   onOpenTagManager,
   customTags = DEFAULT_TAGS,
@@ -334,6 +340,16 @@ export const Masthead: React.FC<Props> = ({
 
           <button
             type="button"
+            className="terminal-btn"
+            onClick={onOpenFilePicker}
+            title="Browse project source files & slice code with notes (F)"
+          >
+            <FolderOpen size={13} />
+            <span>ATTACH FILE</span>
+          </button>
+
+          <button
+            type="button"
             className="terminal-btn primary-btn add-clue-btn"
             onClick={onAddSnippet}
             title="Pin new clue node (N)"
@@ -341,6 +357,7 @@ export const Masthead: React.FC<Props> = ({
             <Plus size={15} />
             <span>PIN_CLUE (N)</span>
           </button>
+
         </div>
       </div>
 

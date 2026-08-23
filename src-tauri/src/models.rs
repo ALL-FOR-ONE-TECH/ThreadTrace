@@ -5,16 +5,20 @@ pub struct SnippetNode {
     pub id: Option<i64>,
     pub x: f64,
     pub y: f64,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
     pub title: String,
     pub tag: String,
     pub mode: String,
     pub code: Option<String>,
+    pub notes: Option<String>,
     pub file_path: Option<String>,
     pub line_start: Option<i32>,
     pub line_end: Option<i32>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnippetLink {

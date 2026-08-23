@@ -49,15 +49,15 @@ pub fn add_link_cmd(state: State<'_, AppState>, from_id: i64, to_id: i64) -> Res
 }
 
 #[tauri::command]
-pub fn delete_link_cmd(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+pub fn delete_link_cmd(state: State<'_, AppState>, from_id: i64, to_id: i64) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    db::delete_link(&conn, id).map_err(|e| e.to_string())
+    db::delete_link(&conn, from_id, to_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn delete_link_between_cmd(state: State<'_, AppState>, from_id: i64, to_id: i64) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    db::delete_link_between(&conn, from_id, to_id).map_err(|e| e.to_string())
+    db::delete_link(&conn, from_id, to_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -66,12 +66,24 @@ pub fn read_file_snippet_cmd(file_path: String, line_start: Option<i32>, line_en
 }
 
 #[tauri::command]
+pub fn write_file_snippet_cmd(file_path: String, line_start: i32, line_end: i32, new_content: String) -> Result<(), String> {
+    git_watcher::write_file_slice(&file_path, line_start, line_end, &new_content)
+}
+
+#[tauri::command]
+pub fn list_repo_files_cmd(repo_path: String) -> Vec<String> {
+    git_watcher::list_repo_files(&repo_path)
+}
+
+
+#[tauri::command]
 pub fn watch_repo_cmd(state: State<'_, AppState>, repo_path: String) -> Result<RepoWatchInfo, String> {
     let git_info = git_watcher::get_git_info(&repo_path);
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let _ = db::save_repo_watch(&conn, &repo_path, git_info.last_commit.as_deref().unwrap_or(""));
+        let _ = db::set_repo_watch(&conn, &repo_path, git_info.last_commit.as_deref());
     }
+
     {
         let mut watched = state.watched_repo.lock().map_err(|e| e.to_string())?;
         *watched = Some(repo_path);

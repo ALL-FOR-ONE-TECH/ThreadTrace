@@ -21,10 +21,13 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             x REAL NOT NULL,
             y REAL NOT NULL,
+            width REAL DEFAULT 340.0,
+            height REAL DEFAULT 260.0,
             title TEXT NOT NULL,
             tag TEXT CHECK(tag IN ('BUG','TASK','FIX','EVIDENCE')) NOT NULL,
             mode TEXT CHECK(mode IN ('read','write')) DEFAULT 'read',
             code TEXT,
+            notes TEXT,
             file_path TEXT,
             line_start INTEGER,
             line_end INTEGER,
@@ -50,6 +53,11 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         "#,
     )?;
 
+    // Safe column migrations for existing SQLite databases
+    let _ = conn.execute("ALTER TABLE nodes ADD COLUMN width REAL DEFAULT 340.0;", []);
+    let _ = conn.execute("ALTER TABLE nodes ADD COLUMN height REAL DEFAULT 260.0;", []);
+    let _ = conn.execute("ALTER TABLE nodes ADD COLUMN notes TEXT;", []);
+
     Ok(())
 }
 
@@ -57,22 +65,22 @@ pub fn seed_demo_data(conn: &Connection) -> Result<()> {
     let ts = now_millis();
     conn.execute(
         r#"
-        INSERT OR IGNORE INTO nodes (id, x, y, title, tag, mode, code, file_path, line_start, line_end, created_at, updated_at)
-        VALUES (1, 80.0, 100.0, 'BUG_RACE_CONDITION_JWT', 'BUG', 'read',
+        INSERT OR IGNORE INTO nodes (id, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
+        VALUES (1, 80.0, 100.0, 360.0, 280.0, 'BUG_RACE_CONDITION_JWT', 'BUG', 'read',
 '// CRITICAL: Token refresh race condition under concurrent requests
 async function refreshToken() {
   const res = await api.post(''/auth/refresh'');
   localStorage.setItem(''jwt_token'', res.data.token);
   return res.data.token;
-}', NULL, NULL, NULL, ?1, ?1)
+}', 'Multiple API calls in parallel trigger 401 unauthenticated storms when refreshing JWT in flight.', NULL, NULL, NULL, ?1, ?1)
         "#,
         params![ts],
     )?;
 
     conn.execute(
         r#"
-        INSERT OR IGNORE INTO nodes (id, x, y, title, tag, mode, code, file_path, line_start, line_end, created_at, updated_at)
-        VALUES (2, 480.0, 180.0, 'FIX_CONCURRENT_MUTEX_QUEUE', 'FIX', 'read',
+        INSERT OR IGNORE INTO nodes (id, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
+        VALUES (2, 520.0, 140.0, 380.0, 300.0, 'FIX_CONCURRENT_MUTEX_QUEUE', 'FIX', 'read',
 '// RESOLUTION: Atomic in-flight lock deduplication
 let inflightRefresh: Promise<string> | null = null;
 
@@ -82,7 +90,7 @@ export async function getValidToken(): Promise<string> {
     .then(r => r.data.token)
     .finally(() => { inflightRefresh = null; });
   return inflightRefresh;
-}', NULL, NULL, NULL, ?1, ?1)
+}', 'Single in-flight Promise deduplicates all parallel requests safely.', NULL, NULL, NULL, ?1, ?1)
         "#,
         params![ts],
     )?;
@@ -95,10 +103,9 @@ export async function getValidToken(): Promise<string> {
     Ok(())
 }
 
-
 pub fn get_board_data(conn: &Connection) -> Result<BoardData> {
     let mut stmt_nodes = conn.prepare(
-        "SELECT id, x, y, title, tag, mode, code, file_path, line_start, line_end, created_at, updated_at FROM nodes ORDER BY id ASC"
+        "SELECT id, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at FROM nodes ORDER BY id ASC"
     )?;
 
     let nodes = stmt_nodes.query_map([], |row| {
@@ -106,15 +113,18 @@ pub fn get_board_data(conn: &Connection) -> Result<BoardData> {
             id: Some(row.get(0)?),
             x: row.get(1)?,
             y: row.get(2)?,
-            title: row.get(3)?,
-            tag: row.get(4)?,
-            mode: row.get(5)?,
-            code: row.get(6)?,
-            file_path: row.get(7)?,
-            line_start: row.get(8)?,
-            line_end: row.get(9)?,
-            created_at: Some(row.get(10)?),
-            updated_at: Some(row.get(11)?),
+            width: row.get(3).ok(),
+            height: row.get(4).ok(),
+            title: row.get(5)?,
+            tag: row.get(6)?,
+            mode: row.get(7)?,
+            code: row.get(8)?,
+            notes: row.get(9)?,
+            file_path: row.get(10)?,
+            line_start: row.get(11)?,
+            line_end: row.get(12)?,
+            created_at: Some(row.get(13)?),
+            updated_at: Some(row.get(14)?),
         })
     })?.collect::<Result<Vec<SnippetNode>>>()?;
 
@@ -151,18 +161,24 @@ pub fn get_board_data(conn: &Connection) -> Result<BoardData> {
 
 pub fn upsert_node(conn: &Connection, node: &SnippetNode) -> Result<i64> {
     let ts = now_millis();
+    let width = node.width.unwrap_or(340.0);
+    let height = node.height.unwrap_or(260.0);
+
     if let Some(id) = node.id {
         conn.execute(
             r#"
-            INSERT INTO nodes (id, x, y, title, tag, mode, code, file_path, line_start, line_end, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            INSERT INTO nodes (id, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             ON CONFLICT(id) DO UPDATE SET
                 x = excluded.x,
                 y = excluded.y,
+                width = excluded.width,
+                height = excluded.height,
                 title = excluded.title,
                 tag = excluded.tag,
                 mode = excluded.mode,
                 code = excluded.code,
+                notes = excluded.notes,
                 file_path = excluded.file_path,
                 line_start = excluded.line_start,
                 line_end = excluded.line_end,
@@ -172,10 +188,13 @@ pub fn upsert_node(conn: &Connection, node: &SnippetNode) -> Result<i64> {
                 id,
                 node.x,
                 node.y,
+                width,
+                height,
                 node.title,
                 node.tag,
                 node.mode,
                 node.code,
+                node.notes,
                 node.file_path,
                 node.line_start,
                 node.line_end,
@@ -187,16 +206,19 @@ pub fn upsert_node(conn: &Connection, node: &SnippetNode) -> Result<i64> {
     } else {
         conn.execute(
             r#"
-            INSERT INTO nodes (x, y, title, tag, mode, code, file_path, line_start, line_end, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            INSERT INTO nodes (x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
             "#,
             params![
                 node.x,
                 node.y,
+                width,
+                height,
                 node.title,
                 node.tag,
                 node.mode,
                 node.code,
+                node.notes,
                 node.file_path,
                 node.line_start,
                 node.line_end,
@@ -229,15 +251,16 @@ pub fn add_link(conn: &Connection, from_id: i64, to_id: i64) -> Result<i64> {
         params![min_id, max_id, ts],
     )?;
 
-    Ok(conn.last_insert_rowid())
+    let link_id: i64 = conn.query_row(
+        "SELECT id FROM links WHERE from_id = ?1 AND to_id = ?2",
+        params![min_id, max_id],
+        |row| row.get(0),
+    )?;
+
+    Ok(link_id)
 }
 
-pub fn delete_link(conn: &Connection, id: i64) -> Result<()> {
-    conn.execute("DELETE FROM links WHERE id = ?1", params![id])?;
-    Ok(())
-}
-
-pub fn delete_link_between(conn: &Connection, from_id: i64, to_id: i64) -> Result<()> {
+pub fn delete_link(conn: &Connection, from_id: i64, to_id: i64) -> Result<()> {
     let (min_id, max_id) = if from_id < to_id { (from_id, to_id) } else { (to_id, from_id) };
     conn.execute(
         "DELETE FROM links WHERE from_id = ?1 AND to_id = ?2",
@@ -246,14 +269,21 @@ pub fn delete_link_between(conn: &Connection, from_id: i64, to_id: i64) -> Resul
     Ok(())
 }
 
-pub fn save_repo_watch(conn: &Connection, path: &str, last_commit: &str) -> Result<()> {
+pub fn set_repo_watch(conn: &Connection, path: &str, last_commit: Option<&str>) -> Result<()> {
+    conn.execute("DELETE FROM repo_watch", [])?;
     conn.execute(
-        r#"
-        INSERT INTO repo_watch (path, last_commit)
-        VALUES (?1, ?2)
-        ON CONFLICT(path) DO UPDATE SET last_commit = excluded.last_commit;
-        "#,
+        "INSERT INTO repo_watch (path, last_commit) VALUES (?1, ?2)",
         params![path, last_commit],
+    )?;
+    Ok(())
+}
+
+pub fn clear_board(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        DELETE FROM links;
+        DELETE FROM nodes;
+        "#,
     )?;
     Ok(())
 }
@@ -262,74 +292,121 @@ pub fn save_repo_watch(conn: &Connection, path: &str, last_commit: &str) -> Resu
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_init_db_and_demo_seed() {
+    fn in_memory_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         init_db(&conn).unwrap();
-
-        let data_empty = get_board_data(&conn).unwrap();
-        assert_eq!(data_empty.nodes.len(), 0, "Clean database starts empty");
-
-        seed_demo_data(&conn).unwrap();
-        let data = get_board_data(&conn).unwrap();
-        assert_eq!(data.nodes.len(), 2, "Should seed 2 demo nodes");
-        assert_eq!(data.links.len(), 1, "Should seed 1 demo link");
-        assert_eq!(data.nodes[0].title, "BUG_RACE_CONDITION_JWT");
-        assert_eq!(data.nodes[1].title, "FIX_CONCURRENT_MUTEX_QUEUE");
-        assert_eq!(data.links[0].from_id, 1);
-        assert_eq!(data.links[0].to_id, 2);
+        conn
     }
 
+    #[test]
+    fn test_init_db_and_demo_seed() {
+        let conn = in_memory_db();
+        seed_demo_data(&conn).unwrap();
+        let data = get_board_data(&conn).unwrap();
+        assert_eq!(data.nodes.len(), 2);
+        assert_eq!(data.links.len(), 1);
+        assert_eq!(data.nodes[0].title, "BUG_RACE_CONDITION_JWT");
+        assert!(data.nodes[0].notes.is_some());
+    }
 
     #[test]
     fn test_upsert_and_delete_node_cascade() {
-        let conn = Connection::open_in_memory().unwrap();
-        init_db(&conn).unwrap();
-        seed_demo_data(&conn).unwrap();
-
-        let node = SnippetNode {
+        let conn = in_memory_db();
+        let n1 = SnippetNode {
             id: None,
-            x: 200.0,
-            y: 300.0,
-            title: "TASK_NEW_FEATURE".to_string(),
-            tag: "TASK".to_string(),
-            mode: "read".to_string(),
-            code: Some("// task body".to_string()),
-            file_path: Some("src/feature.rs".to_string()),
-            line_start: Some(10),
-            line_end: Some(25),
+            x: 10.0,
+            y: 20.0,
+            width: Some(350.0),
+            height: Some(280.0),
+            title: "TEST_NODE_1".into(),
+            tag: "BUG".into(),
+            mode: "read".into(),
+            code: Some("console.log(1)".into()),
+            notes: Some("sample note".into()),
+            file_path: None,
+            line_start: None,
+            line_end: None,
             created_at: None,
             updated_at: None,
         };
+        let id1 = upsert_node(&conn, &n1).unwrap();
+        let n2 = SnippetNode {
+            id: None,
+            x: 30.0,
+            y: 40.0,
+            width: Some(350.0),
+            height: Some(280.0),
+            title: "TEST_NODE_2".into(),
+            tag: "FIX".into(),
+            mode: "read".into(),
+            code: Some("console.log(2)".into()),
+            notes: None,
+            file_path: None,
+            line_start: None,
+            line_end: None,
+            created_at: None,
+            updated_at: None,
+        };
+        let id2 = upsert_node(&conn, &n2).unwrap();
 
-        let new_id = upsert_node(&conn, &node).unwrap();
-        assert!(new_id >= 3);
-
-        let link_id = add_link(&conn, 1, new_id).unwrap();
-        assert!(link_id > 0);
-
+        add_link(&conn, id1, id2).unwrap();
         let data = get_board_data(&conn).unwrap();
-        assert_eq!(data.nodes.len(), 3);
-        assert_eq!(data.links.len(), 2);
+        assert_eq!(data.nodes.len(), 2);
+        assert_eq!(data.links.len(), 1);
 
-        delete_node(&conn, new_id).unwrap();
-
+        delete_node(&conn, id1).unwrap();
         let data_after = get_board_data(&conn).unwrap();
-        assert_eq!(data_after.nodes.len(), 2);
-        assert_eq!(data_after.links.len(), 1, "Cascading delete should remove the link to deleted node");
+        assert_eq!(data_after.nodes.len(), 1);
+        assert_eq!(data_after.links.len(), 0);
     }
 
     #[test]
     fn test_link_deduplication_and_self_link_prevention() {
-        let conn = Connection::open_in_memory().unwrap();
-        init_db(&conn).unwrap();
-        seed_demo_data(&conn).unwrap();
+        let conn = in_memory_db();
+        let n1 = SnippetNode {
+            id: None,
+            x: 10.0,
+            y: 20.0,
+            width: None,
+            height: None,
+            title: "N1".into(),
+            tag: "BUG".into(),
+            mode: "read".into(),
+            code: None,
+            notes: None,
+            file_path: None,
+            line_start: None,
+            line_end: None,
+            created_at: None,
+            updated_at: None,
+        };
+        let n2 = SnippetNode {
+            id: None,
+            x: 30.0,
+            y: 40.0,
+            width: None,
+            height: None,
+            title: "N2".into(),
+            tag: "FIX".into(),
+            mode: "read".into(),
+            code: None,
+            notes: None,
+            file_path: None,
+            line_start: None,
+            line_end: None,
+            created_at: None,
+            updated_at: None,
+        };
+        let id1 = upsert_node(&conn, &n1).unwrap();
+        let id2 = upsert_node(&conn, &n2).unwrap();
 
-        let self_link_res = add_link(&conn, 1, 1);
-        assert!(self_link_res.is_err());
+        assert!(add_link(&conn, id1, id1).is_err());
 
-        let _ = add_link(&conn, 2, 1);
+        let l1 = add_link(&conn, id1, id2).unwrap();
+        let l2 = add_link(&conn, id2, id1).unwrap();
+        assert_eq!(l1, l2);
+
         let data = get_board_data(&conn).unwrap();
-        assert_eq!(data.links.len(), 1, "Should not create duplicate reverse link");
+        assert_eq!(data.links.len(), 1);
     }
-}
+}

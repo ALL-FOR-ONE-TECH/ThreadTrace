@@ -11,21 +11,27 @@ export interface CustomTag {
 export const DEFAULT_TAGS: CustomTag[] = [
   { id: 'BUG', label: 'BUG', color: '#ff4d4f', sub: 'CRITICAL' },
   { id: 'TASK', label: 'TASK', color: '#ffb000', sub: 'TODO' },
-  { id: 'FIX', label: 'FIX', color: '#52c41a', sub: 'PATCH' },
-  { id: 'EVIDENCE', label: 'EVIDENCE', color: '#1890ff', sub: 'PROOF' },
+  { id: 'FIX', label: 'FIX', color: '#00e676', sub: 'PATCH' },
+  { id: 'EVIDENCE', label: 'EVIDENCE', color: '#2979ff', sub: 'PROOF' },
 ];
+
+export type NodeSyncStatus = 'SYNCED' | 'MODIFIED' | 'DETACHED';
 
 export interface SnippetNode {
   id: number;
   x: number;
   y: number;
+  width?: number;
+  height?: number;
   title: string;
   tag: TagType;
   mode: 'read' | 'write';
   code: string | null;
+  notes?: string | null;
   file_path: string | null;
   line_start: number | null;
   line_end: number | null;
+  syncStatus?: NodeSyncStatus;
   created_at?: number;
   updated_at?: number;
 }
@@ -64,7 +70,6 @@ export interface SystemTelemetry {
   history: number[];
 }
 
-
 export interface BoardData {
   title?: string;
   custom_tags?: CustomTag[];
@@ -79,3 +84,10 @@ export interface DraggingState {
   offsetY: number;
 }
 
+export interface ResizingState {
+  id: number;
+  initialWidth: number;
+  initialHeight: number;
+  initialMouseX: number;
+  initialMouseY: number;
+}

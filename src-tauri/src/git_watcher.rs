@@ -128,8 +128,71 @@ pub fn read_file_slice(file_path: &str, line_start: Option<i32>, line_end: Optio
     }
 }
 
+pub fn write_file_slice(file_path: &str, line_start: i32, line_end: i32, new_content: &str) -> Result<(), String> {
+    let path = Path::new(file_path);
+    if !path.exists() || !path.is_file() {
+        return Err(format!("File not found: {}", file_path));
+    }
+
+    let file = File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let reader = BufReader::new(file);
+    let all_lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+    let total_lines = all_lines.len();
+
+    let start = (line_start.max(1) as usize).saturating_sub(1);
+    let end = (line_end.max(1) as usize).min(total_lines);
+
+    let replacement_lines: Vec<String> = new_content.lines().map(|s| s.to_string()).collect();
+
+    let mut result_lines = Vec::new();
+    result_lines.extend_from_slice(&all_lines[..start.min(total_lines)]);
+    result_lines.extend(replacement_lines);
+    if end < total_lines {
+        result_lines.extend_from_slice(&all_lines[end..]);
+    }
+
+    let updated_text = result_lines.join("\n");
+    std::fs::write(path, updated_text).map_err(|e| format!("Failed to write file: {}", e))?;
+
+    Ok(())
+}
+
+pub fn list_repo_files(repo_path: &str) -> Vec<String> {
+    let mut files = Vec::new();
+    let p = Path::new(repo_path);
+    if !p.exists() || !p.is_dir() {
+        return files;
+    }
+
+    fn walk_dir(dir: &Path, base: &Path, files: &mut Vec<String>, depth: usize) {
+        if depth > 5 || files.len() >= 200 {
+            return;
+        }
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                if file_name.starts_with('.') || file_name == "node_modules" || file_name == "target" || file_name == "dist" {
+                    continue;
+                }
+                if path.is_dir() {
+                    walk_dir(&path, base, files, depth + 1);
+                } else if path.is_file() {
+                    if let Ok(rel) = path.strip_prefix(base) {
+                        files.push(rel.to_string_lossy().replace('\\', "/"));
+                    }
+                }
+            }
+        }
+    }
+
+    walk_dir(p, p, &mut files, 0);
+    files.sort();
+    files
+}
 
 #[cfg(test)]
+
 mod tests {
     use super::*;
     use std::io::Write;
