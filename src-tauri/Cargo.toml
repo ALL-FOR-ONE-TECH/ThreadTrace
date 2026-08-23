@@ -1,0 +1,22 @@
+[package]
+name = "thread-trace"
+version = "1.0.0"
+description = "ThreadTrace: Terminal Investigation Canvas & Low-Memory Evidence Board"
+authors = ["ThreadTrace Team"]
+edition = "2021"
+
+[lib]
+name = "thread_trace_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.32", features = ["bundled"] }
+notify = "6.1"
+chrono = { version = "0.4", features = ["serde"] }
