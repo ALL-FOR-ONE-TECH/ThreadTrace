@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 <img src="docs/screenshots/threadtrace_logo.jpg" alt="ThreadTrace Logo" width="140" style="border-radius: 12px; box-shadow: 0 0 25px rgba(255, 176, 0, 0.4);" />
 
@@ -17,6 +17,7 @@
 </p>
 
 [⚡ One-Line Install](#-one-line-quick-install) •
+[📦 Direct Standalone Binaries](#-direct-standalone-binaries) •
 [✨ Key Features](#-key-features) •
 [📸 Visual Proofs](#-visual-proofs--interactive-states) •
 [📡 How Git Watcher Works](#-how-git-watcher-works) •
@@ -29,25 +30,42 @@
 
 ## ⚡ One-Line Quick Install
 
+The automated installer dynamically fetches the latest release binary from GitHub, configures permissions, and creates desktop launcher shortcuts.
+
 ### 🪟 Windows (PowerShell)
-Run in PowerShell to automatically download and install the latest native desktop release with a Desktop shortcut:
+Run in Windows PowerShell to dynamically download, unblock, and install the latest native desktop executable with Desktop & Start Menu shortcuts:
 ```powershell
 irm https://raw.githubusercontent.com/ALL-FOR-ONE-TECH/ThreadTrace/main/install.ps1 | iex
 ```
+*(Or run `powershell -ExecutionPolicy Bypass -File install.ps1` if running locally)*
+
+> [!NOTE]
+> **Antivirus / SmartScreen False-Positive Notice**: On Windows, newly released unsigned open-source binaries may trigger a SmartScreen or heuristic AV notification. The official installer automatically calls `Unblock-File` to deploy cleanly to `%LOCALAPPDATA%\Programs\ThreadTrace`. You can also download the standalone `.exe` directly below.
+
+---
 
 ### 🐧 Linux & 🍎 macOS (Bash)
-Run in your shell to automatically download and launch the native package:
+Run in your terminal to dynamically resolve the latest release, set permissions, and install:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ALL-FOR-ONE-TECH/ThreadTrace/main/install.sh | bash
 ```
 
-### 📦 Direct Release Asset Downloads
+- **Linux**: Deploys `threadtrace` AppImage to `~/.local/bin/threadtrace` and creates a desktop application entry in `~/.local/share/applications/`.
+- **macOS**: Downloads `.dmg`, mounts and deploys `ThreadTrace.app` to `/Applications/`.
+
+---
+
+## 📦 Direct Standalone Binaries
+
 Download pre-built standalone binaries from the **[Latest GitHub Releases](https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/releases)**:
-- **Windows Portable (.exe)**: [Download ThreadTrace.exe](https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/releases/latest/download/ThreadTrace.exe) *(11.2 MB — zero install required)*
-- **Windows Setup Installer (.exe)**: [Download ThreadTrace_Setup.exe](https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/releases/latest/download/ThreadTrace_Setup.exe)
-- **Windows MSI Installer (.msi)**: [Download ThreadTrace.msi](https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/releases/latest/download/ThreadTrace_1.0.0_x64_en-US.msi)
-- **macOS Universal (.dmg)**: [Download ThreadTrace.dmg](https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/releases/latest/download/ThreadTrace.dmg)
-- **Linux Package (.AppImage / .deb)**: [Download ThreadTrace.AppImage](https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/releases/latest/download/ThreadTrace.AppImage)
+
+| Platform | Format | Download Link | Description |
+|---|---|---|---|
+| **Windows x64** | **Portable `.exe`** | [Download ThreadTrace.exe](https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/releases/latest/download/ThreadTrace.exe) | Single standalone file (~11.2 MB, zero install required) |
+| **Windows x64** | **Setup `.exe`** | [Download ThreadTrace_Setup.exe](https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/releases/latest/download/ThreadTrace_Setup.exe) | Standard NSIS Windows Installer with uninstaller |
+| **Windows x64** | **MSI Package** | [Download ThreadTrace.msi](https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/releases/latest/download/ThreadTrace_1.0.0_x64_en-US.msi) | Windows Enterprise MSI installer |
+| **macOS** | **Universal `.dmg`** | [Download ThreadTrace.dmg](https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/releases/latest/download/ThreadTrace.dmg) | Intel & Apple Silicon (M1/M2/M3/M4) |
+| **Linux** | **AppImage** | [Download ThreadTrace.AppImage](https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/releases/latest/download/ThreadTrace.AppImage) | Universal Linux standalone executable |
 
 ---
 
@@ -182,7 +200,7 @@ npm run tauri build
 
 ## 📄 License
 
-Distributed under the **MIT Open Source License**. See [`LICENSE`](LICENSE) for complete details.
+Distributed under the **MIT Open Source License**. See [`LICENSE`](LICENSE) for complete details. Free for both personal and commercial use.
 
 <div align="center">
   <sub>Maintained with ⚡ by <a href="https://github.com/ALL-FOR-ONE-TECH">ALL-FOR-ONE-TECH</a> & <a href="https://github.com/karthikeyanV2K">Karthikeyan</a>.</sub>

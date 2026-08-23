@@ -99,19 +99,17 @@ export const TauriBridge = {
   async fetchBoardData(): Promise<BoardData> {
     if (isTauriEnv()) {
       try {
-        const nodes = await invoke<SnippetNode[]>('get_all_nodes');
-        const links = await invoke<SnippetLink[]>('get_all_links');
-        const repo = await invoke<RepoWatchInfo | null>('get_repo_info');
+        const board = await invoke<BoardData>('get_board_state');
         const local = getLocalData();
         return {
           title: local.title || 'THREAD_TRACE // AUTH_INVESTIGATION',
           custom_tags: local.custom_tags || DEFAULT_TAGS,
-          nodes: nodes.length ? nodes : local.nodes,
-          links: links.length ? links : local.links,
-          repo_watch: repo || local.repo_watch,
+          nodes: board.nodes && board.nodes.length > 0 ? board.nodes : local.nodes,
+          links: board.links && board.links.length > 0 ? board.links : local.links,
+          repo_watch: board.repo_watch || local.repo_watch,
         };
       } catch (err) {
-        console.warn('Tauri invoke failed, falling back to LocalStorage', err);
+        console.warn('Tauri get_board_state failed, falling back to LocalStorage', err);
       }
     }
     return getLocalData();
@@ -132,9 +130,11 @@ export const TauriBridge = {
   async saveNode(node: SnippetNode): Promise<number> {
     if (isTauriEnv()) {
       try {
-        return await invoke<number>('save_node', { node });
+        const id = await invoke<number>('save_node_cmd', { node });
+        node.id = id;
+        return id;
       } catch (err) {
-        console.warn('Tauri save_node failed, updating local state', err);
+        console.warn('Tauri save_node_cmd failed, updating local state', err);
       }
     }
     const current = getLocalData();
@@ -153,10 +153,9 @@ export const TauriBridge = {
   async deleteNode(id: number): Promise<void> {
     if (isTauriEnv()) {
       try {
-        await invoke('delete_node', { id });
-        return;
+        await invoke('delete_node_cmd', { id });
       } catch (err) {
-        console.warn('Tauri delete_node failed', err);
+        console.warn('Tauri delete_node_cmd failed', err);
       }
     }
     const current = getLocalData();
@@ -168,9 +167,9 @@ export const TauriBridge = {
   async addLink(fromId: number, toId: number): Promise<number> {
     if (isTauriEnv()) {
       try {
-        return await invoke<number>('add_link', { fromId, toId });
+        return await invoke<number>('add_link_cmd', { fromId, toId });
       } catch (err) {
-        console.warn('Tauri add_link failed', err);
+        console.warn('Tauri add_link_cmd failed', err);
       }
     }
     const current = getLocalData();
@@ -189,10 +188,9 @@ export const TauriBridge = {
   async deleteLinkBetween(fromId: number, toId: number): Promise<void> {
     if (isTauriEnv()) {
       try {
-        await invoke('delete_link', { fromId, toId });
-        return;
+        await invoke('delete_link_between_cmd', { fromId, toId });
       } catch (err) {
-        console.warn('Tauri delete_link failed', err);
+        console.warn('Tauri delete_link_between_cmd failed', err);
       }
     }
     const current = getLocalData();
@@ -205,13 +203,16 @@ export const TauriBridge = {
   async readFileBacking(filePath: string, lineStart?: number, lineEnd?: number): Promise<string> {
     if (isTauriEnv()) {
       try {
-        return await invoke<string>('read_file_backing', {
+        const resp = await invoke<{ content: string; exists: boolean; error?: string }>('read_file_snippet_cmd', {
           filePath,
           lineStart: lineStart ?? null,
           lineEnd: lineEnd ?? null,
         });
+        if (resp && resp.content) {
+          return resp.content;
+        }
       } catch (err) {
-        console.warn('Tauri read_file_backing failed', err);
+        console.warn('Tauri read_file_snippet_cmd failed', err);
       }
     }
     return `// [LOCAL READ ONLY FALLBACK]\n// File backing: ${filePath}\n// Lines: ${lineStart ?? 1} - ${lineEnd ?? 50}\nfunction previewSnippet() {\n  console.log('Viewing local file reference');\n};`;
@@ -220,9 +221,9 @@ export const TauriBridge = {
   async watchRepo(path: string): Promise<RepoWatchInfo> {
     if (isTauriEnv()) {
       try {
-        return await invoke<RepoWatchInfo>('watch_repo', { path });
+        return await invoke<RepoWatchInfo>('watch_repo_cmd', { repoPath: path });
       } catch (err) {
-        console.warn('Tauri watch_repo failed', err);
+        console.warn('Tauri watch_repo_cmd failed', err);
       }
     }
     const info: RepoWatchInfo = {
@@ -239,14 +240,29 @@ export const TauriBridge = {
   },
 
   async exportBoard(): Promise<string> {
+    if (isTauriEnv()) {
+      try {
+        return await invoke<string>('export_board_cmd');
+      } catch (err) {
+        console.warn('Tauri export_board_cmd failed', err);
+      }
+    }
     const data = await this.fetchBoardData();
     return JSON.stringify(data, null, 2);
   },
 
   async importBoard(json: string): Promise<BoardData> {
+    if (isTauriEnv()) {
+      try {
+        const board = await invoke<BoardData>('import_board_cmd', { jsonContent: json });
+        saveLocalData(board);
+        return board;
+      } catch (err) {
+        console.warn('Tauri import_board_cmd failed', err);
+      }
+    }
     const parsed = JSON.parse(json) as BoardData;
     saveLocalData(parsed);
     return parsed;
   },
 };
-
