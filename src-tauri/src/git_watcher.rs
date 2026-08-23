@@ -192,7 +192,6 @@ pub fn list_repo_files(repo_path: &str) -> Vec<String> {
 }
 
 pub fn list_system_drives() -> Vec<String> {
-
     let mut drives = Vec::new();
     #[cfg(target_os = "windows")]
     {
@@ -206,7 +205,38 @@ pub fn list_system_drives() -> Vec<String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
+        if let Ok(home) = std::env::var("HOME") {
+            if Path::new(&home).exists() {
+                drives.push(home);
+            }
+        }
         drives.push("/".to_string());
+
+        // Check macOS volumes
+        if Path::new("/Volumes").is_dir() {
+            if let Ok(entries) = std::fs::read_dir("/Volumes") {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        drives.push(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+
+        // Check Linux mount points
+        for mnt in &["/mnt", "/media"] {
+            if Path::new(mnt).is_dir() {
+                if let Ok(entries) = std::fs::read_dir(mnt) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            drives.push(path.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
     }
     if drives.is_empty() {
         drives.push(".".to_string());
@@ -216,7 +246,21 @@ pub fn list_system_drives() -> Vec<String> {
 
 pub fn read_dir_entries(dir_path: &str) -> Vec<crate::models::DirEntryItem> {
     let mut items = Vec::new();
-    let p = Path::new(dir_path);
+    let resolved_path = if dir_path.starts_with("~/") || dir_path == "~" {
+        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+            if dir_path == "~" {
+                home
+            } else {
+                format!("{}/{}", home.trim_end_matches('/'), &dir_path[2..])
+            }
+        } else {
+            dir_path.to_string()
+        }
+    } else {
+        dir_path.to_string()
+    };
+
+    let p = Path::new(&resolved_path);
     if !p.exists() || !p.is_dir() {
         return items;
     }
@@ -251,6 +295,7 @@ pub fn read_dir_entries(dir_path: &str) -> Vec<crate::models::DirEntryItem> {
 
     items
 }
+
 
 #[cfg(test)]
 

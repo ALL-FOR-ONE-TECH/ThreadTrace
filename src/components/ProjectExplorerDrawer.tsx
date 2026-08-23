@@ -13,8 +13,11 @@ import {
   X,
   FileText,
   RefreshCw,
+  Maximize2,
+  Minimize2,
+  WrapText,
+  FileCheck,
 } from 'lucide-react';
-
 
 interface Props {
   isOpen: boolean;
@@ -55,6 +58,10 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
   const [tag, setTag] = useState<TagType>('BUG');
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [wrapLines, setWrapLines] = useState(false);
+  const [treeWidth, setTreeWidth] = useState(260);
+  const [isDraggingSplitter, setIsDraggingSplitter] = useState(false);
   const codePreRef = useRef<HTMLPreElement>(null);
 
   // Load system drives on mount
@@ -62,7 +69,7 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
     TauriBridge.listSystemDrives().then((d) => setDrives(d));
   }, []);
 
-  // Load directory entries cleanly without trigger cascading watcher loops
+  // Load directory entries cleanly
   useEffect(() => {
     if (!isOpen) return;
     let isCancelled = false;
@@ -78,7 +85,6 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
     };
   }, [currentDir, isOpen]);
 
-
   // Load full file content when selectedFile changes
   useEffect(() => {
     if (!selectedFile) {
@@ -86,7 +92,7 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
       setSelectedSnippet('');
       return;
     }
-    TauriBridge.readFileBacking(selectedFile, 1, 500).then((content) => {
+    TauriBridge.readFileBacking(selectedFile, 1, 1000).then((content) => {
       setFullFileContent(content);
       setSelectedSnippet(content);
       const basename = selectedFile.split(/[\\/]/).pop()?.toUpperCase() || 'SNIPPET';
@@ -96,6 +102,31 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
       setLineEnd(Math.min(20, Math.max(1, lines.length)));
     });
   }, [selectedFile]);
+
+  // Splitter drag listener
+  const handleSplitterMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingSplitter(true);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingSplitter) return;
+      const newWidth = Math.min(500, Math.max(180, e.clientX - 10));
+      setTreeWidth(newWidth);
+    };
+    const handleMouseUp = () => {
+      if (isDraggingSplitter) setIsDraggingSplitter(false);
+    };
+    if (isDraggingSplitter) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingSplitter]);
 
   // Handle Mouse Selection directly inside the Code Viewer
   const handleMouseSelection = () => {
@@ -134,8 +165,24 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
     if (onWatchRepo) onWatchRepo(drive);
   };
 
+  // 1-Click: Insert entire file directly
+  const handleInsertEntireFile = () => {
+    if (!selectedFile) return;
+    const fallbackTitle = selectedFile.split(/[\\/]/).pop()?.toUpperCase() || 'FILE';
+    const lines = fullFileContent.split('\n');
+    onPinClue({
+      title: title.trim() || `${fallbackTitle}_FULL`,
+      tag,
+      code: fullFileContent || '// Empty file',
+      notes: notes.trim(),
+      filePath: selectedFile,
+      lineStart: 1,
+      lineEnd: Math.max(1, lines.length),
+    });
+  };
 
-  const handlePin = (e: React.FormEvent) => {
+  // Insert selection or sliced lines
+  const handlePinSelection = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) return;
 
@@ -162,15 +209,25 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
   if (!isOpen) return null;
 
   return (
-    <aside className="project-explorer-drawer">
+    <aside className={`project-explorer-drawer ${isExpanded ? 'drawer-expanded' : ''}`}>
       <div className="drawer-header">
         <div className="drawer-title">
           <HardDrive size={14} className="amber-glow-icon" />
           <span>PROJECT FILE EXPLORER // SOURCE SLICER</span>
         </div>
-        <button type="button" className="drawer-close-btn" onClick={onClose} title="Close Explorer (Esc)">
-          <X size={14} />
-        </button>
+        <div className="drawer-header-actions">
+          <button
+            type="button"
+            className="drawer-header-btn"
+            onClick={() => setIsExpanded((v) => !v)}
+            title={isExpanded ? 'Restore Standard Width' : 'Expand Wide Screen'}
+          >
+            {isExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+          </button>
+          <button type="button" className="drawer-close-btn" onClick={onClose} title="Close Explorer (Esc)">
+            <X size={14} />
+          </button>
+        </div>
       </div>
 
       {/* Drive / Workspace Selector */}
@@ -234,8 +291,8 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
         />
       </div>
 
-      {/* Two Columns */}
-      <div className="drawer-content-grid">
+      {/* Two Columns with Resizable Splitter */}
+      <div className="drawer-content-grid" style={{ gridTemplateColumns: `${treeWidth}px 6px 1fr` }}>
         {/* Left: Tree */}
         <div className="drawer-file-tree">
           {isLoading && <div className="tree-loading-notice">Loading directory...</div>}
@@ -293,14 +350,24 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
           ))}
         </div>
 
+        {/* Draggable Resizer Splitter Handle */}
+        <div
+          className={`drawer-splitter-handle ${isDraggingSplitter ? 'is-dragging' : ''}`}
+          onMouseDown={handleSplitterMouseDown}
+          title="Drag to resize panels"
+        />
+
         {/* Right: Code Slicer & Mouse Drag Selection */}
         <div className="drawer-slicer-pane">
           {selectedFile ? (
-            <form onSubmit={handlePin} className="slicer-form">
+            <form onSubmit={handlePinSelection} className="slicer-form">
               <div className="slicer-header-file">
                 <FileCode size={13} className="amber-glow-icon" />
                 <span className="slicer-filepath" title={selectedFile}>
                   {selectedFile}
+                </span>
+                <span className="file-size-badge">
+                  {fullFileContent.split('\n').length} lines
                 </span>
               </div>
 
@@ -368,16 +435,27 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
                 />
               </div>
 
-              {/* Code Viewer with Live Mouse Selection */}
+              {/* Code Viewer with Live Mouse Selection & Wrap Toggle */}
               <div className="slicer-preview-block">
                 <div className="preview-block-header">
-                  <span>SELECT CODE WITH MOUSE TO PIN SNIPPET:</span>
-                  <span className="selection-hint">Highlight lines below ↴</span>
+                  <div className="preview-header-left">
+                    <span>CODE PREVIEW & MOUSE HIGHLIGHTER:</span>
+                    <span className="selection-hint">Highlight lines with mouse ↴</span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`terminal-btn btn-xs ${wrapLines ? 'primary-btn' : ''}`}
+                    onClick={() => setWrapLines((w) => !w)}
+                    title="Toggle Word Wrap for long lines"
+                  >
+                    <WrapText size={11} />
+                    <span>{wrapLines ? 'WRAP: ON' : 'WRAP: OFF'}</span>
+                  </button>
                 </div>
 
                 <pre
                   ref={codePreRef}
-                  className="preview-code-box interactive-code-select"
+                  className={`preview-code-box interactive-code-select ${wrapLines ? 'wrap-enabled' : ''}`}
                   onMouseUp={handleMouseSelection}
                   title="Highlight any lines with mouse to capture snippet"
                 >
@@ -385,15 +463,28 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
                 </pre>
               </div>
 
-              <button type="submit" className="terminal-btn primary-btn pin-submit-btn">
-                <Plus size={14} />
-                <span>+ INSERT SELECTION INTO BOARD</span>
-              </button>
+              {/* Dual Action Buttons */}
+              <div className="slicer-actions-row">
+                <button
+                  type="button"
+                  className="terminal-btn insert-whole-file-btn"
+                  onClick={handleInsertEntireFile}
+                  title="Insert full source file directly onto board without slicing"
+                >
+                  <FileCheck size={14} />
+                  <span>📥 INSERT ENTIRE FILE</span>
+                </button>
+
+                <button type="submit" className="terminal-btn primary-btn pin-submit-btn">
+                  <Plus size={14} />
+                  <span>⚡ INSERT SELECTION (L{lineStart}-{lineEnd})</span>
+                </button>
+              </div>
             </form>
           ) : (
             <div className="slicer-empty-prompt">
               <FileCode size={28} className="empty-icon" />
-              <p>Select any source file on the left to slice code and pin evidence clues onto the board.</p>
+              <p>Select any source file on the left to slice code or drop the entire file onto the board.</p>
             </div>
           )}
         </div>
@@ -401,3 +492,4 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
     </aside>
   );
 };
+

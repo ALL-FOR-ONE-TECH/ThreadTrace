@@ -28,30 +28,36 @@
 
 ---
 
-## ⚡ One-Line Quick Install
-
-The automated installer dynamically fetches the latest release binary from GitHub, configures permissions, and creates desktop launcher shortcuts.
+## ⚡ Quick Install & Uninstall
 
 ### 🪟 Windows (PowerShell)
-Run in Windows PowerShell to dynamically download, unblock, and install the latest native desktop executable with Desktop & Start Menu shortcuts:
+
+**Install (One-Line Command):**
 ```powershell
 irm https://raw.githubusercontent.com/ALL-FOR-ONE-TECH/ThreadTrace/main/install.ps1 | iex
 ```
-*(Or run `powershell -ExecutionPolicy Bypass -File install.ps1` if running locally)*
 
-> [!NOTE]
-> **Antivirus / SmartScreen False-Positive Notice**: On Windows, newly released unsigned open-source binaries may trigger a SmartScreen or heuristic AV notification. The official installer automatically calls `Unblock-File` to deploy cleanly to `%LOCALAPPDATA%\Programs\ThreadTrace`. You can also download the standalone `.exe` directly below.
+**Uninstall (One-Line Command):**
+```powershell
+irm https://raw.githubusercontent.com/ALL-FOR-ONE-TECH/ThreadTrace/main/uninstall.ps1 | iex
+```
+*Note: Uninstall cleanly deletes the executable, shortcuts, and PATH entries while safely keeping your project files and databases intact.*
 
 ---
 
 ### 🐧 Linux & 🍎 macOS (Bash)
-Run in your terminal to dynamically resolve the latest release, set permissions, and install:
+
+**Install (One-Line Command):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ALL-FOR-ONE-TECH/ThreadTrace/main/install.sh | bash
 ```
 
-- **Linux**: Deploys `threadtrace` AppImage to `~/.local/bin/threadtrace` and creates a desktop application entry in `~/.local/share/applications/`.
-- **macOS**: Downloads `.dmg`, mounts and deploys `ThreadTrace.app` to `/Applications/`.
+**Uninstall (One-Line Command):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/ALL-FOR-ONE-TECH/ThreadTrace/main/uninstall.sh | bash
+```
+*Note: Removes binaries (`~/.local/bin/threadtrace` or `/Applications/ThreadTrace.app`) while safely keeping all project files and investigation databases intact.*
+
 
 ---
 
@@ -187,14 +193,18 @@ npm run tauri build
 
 | Shortcut | Action |
 |---|---|
-| <kbd>N</kbd> | Add new snippet card |
-| <kbd>T</kbd> | Open Custom Tag Engine |
-| <kbd>Ctrl</kbd> + <kbd>Wheel</kbd> | Smooth cursor-centered canvas zoom |
-| <kbd>Alt</kbd> + <kbd>Drag</kbd> | Fluid canvas pan |
-| <kbd>0</kbd> | Show all cards |
+| <kbd>N</kbd> | Add new snippet clue card |
+| <kbd>E</kbd> | Open Project File Explorer & Source Slicer Drawer |
+| <kbd>T</kbd> | Open Custom Tag Engine & Color Palette |
+| <kbd>Space</kbd> + <kbd>Drag</kbd> / Left-Click Canvas | Fluid infinite canvas pan |
+| <kbd>Ctrl</kbd> + <kbd>Wheel</kbd> | Smooth cursor-centered canvas zoom ($0.50\times - 1.50\times$) |
+| <kbd>0</kbd> | Reset filter (Show all cards) |
 | <kbd>1</kbd> .. <kbd>4</kbd> | Quick-filter by BUG, TASK, FIX, EVIDENCE |
-| <kbd>Esc</kbd> | Cancel evidence linking / Close active modals |
+| <kbd>Ctrl</kbd> + <kbd>Z</kbd> / <kbd>Ctrl</kbd> + <kbd>Y</kbd> | Undo / Redo board actions |
+| <kbd>Ctrl</kbd> + <kbd>K</kbd> / <kbd>/</kbd> | Command Palette |
+| <kbd>Esc</kbd> | Cancel evidence linking / Close active drawers |
 | <kbd>?</kbd> | Toggle Interactive Shortcuts Cheatsheet |
+
 
 ---
 

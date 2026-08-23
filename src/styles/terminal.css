@@ -1857,6 +1857,45 @@ html, body, #root {
   gap: 12px;
 }
 
+.drawer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.drawer-header-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 4px;
+  display: flex;
+  align-items: center;
+}
+
+.drawer-header-btn:hover {
+  color: var(--amber-bright);
+}
+
+.drawer-expanded {
+  width: 92vw !important;
+  max-width: 96vw !important;
+}
+
+.drawer-splitter-handle {
+  width: 6px;
+  background: var(--border-dim);
+  cursor: col-resize;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.drawer-splitter-handle:hover,
+.drawer-splitter-handle.is-dragging {
+  background: var(--amber-primary);
+  box-shadow: 0 0 8px var(--amber-glow);
+}
+
 .slicer-form {
   display: flex;
   flex-direction: column;
@@ -1882,20 +1921,91 @@ html, body, #root {
   white-space: nowrap;
 }
 
+.file-size-badge {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--text-dim);
+  background: #151b24;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
 .slicer-grid-fields {
   display: grid;
   grid-template-columns: 1fr 120px 140px;
   gap: 8px;
 }
 
-.slicer-preview-box {
-  margin-top: 4px;
+.slicer-preview-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preview-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--amber-muted);
+}
+
+.preview-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-code-box {
+  background: #040508;
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--amber-bright);
+  overflow: auto;
+  max-height: 320px;
+  min-height: 140px;
+}
+
+.preview-code-box code {
+  white-space: pre;
+}
+
+.preview-code-box.wrap-enabled code {
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+}
+
+.slicer-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.insert-whole-file-btn {
+  background: rgba(40, 167, 69, 0.2) !important;
+  border: 1px solid #28a745 !important;
+  color: #52c41a !important;
+  font-weight: 800 !important;
+  padding: 8px 12px !important;
+  font-size: 11px !important;
+  box-shadow: 0 0 10px rgba(40, 167, 69, 0.3);
+}
+
+.insert-whole-file-btn:hover {
+  background: #28a745 !important;
+  color: #000 !important;
 }
 
 .pin-submit-btn {
-  margin-top: 6px;
-  padding: 8px 14px;
+  padding: 8px 12px;
   font-size: 11px;
+  font-weight: 800;
 }
 
 .slicer-empty-prompt {
@@ -1910,6 +2020,7 @@ html, body, #root {
   text-align: center;
   padding: 30px;
 }
+
 
 .empty-icon {
   color: var(--text-dim);
