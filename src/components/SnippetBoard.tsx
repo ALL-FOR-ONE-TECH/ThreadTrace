@@ -7,8 +7,10 @@ import { SvgLinkLayer } from '../canvas/SvgLinkLayer';
 import { Minimap } from '../canvas/Minimap';
 import { ShortcutsModal } from './ShortcutsModal';
 import { TagManagerModal } from './TagManagerModal';
+import { CommandPaletteModal } from './CommandPaletteModal';
 import { SystemTelemetryHUD } from './SystemTelemetryHUD';
 import { generateInvestigationMarkdown } from '../services/dossierExport';
+import { generateInvestigationHtml } from '../services/htmlDossierExport';
 import { ZoomIn, ZoomOut, Maximize2, Plus, Sparkles, FolderSearch } from 'lucide-react';
 
 export const SnippetBoard: React.FC = () => {
@@ -23,6 +25,9 @@ export const SnippetBoard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showShortcuts, setShowShortcuts] = useState<boolean>(false);
   const [showTagManager, setShowTagManager] = useState<boolean>(false);
+  const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
+  const [historyStack, setHistoryStack] = useState<{ nodes: SnippetNode[]; links: SnippetLink[] }[]>([]);
+  const [redoStack, setRedoStack] = useState<{ nodes: SnippetNode[]; links: SnippetLink[] }[]>([]);
   const [repoWatch, setRepoWatch] = useState<RepoWatchInfo | null>(null);
   const [isTauri, setIsTauri] = useState(false);
   const [zoom, setZoom] = useState<number>(1.0);
@@ -34,6 +39,31 @@ export const SnippetBoard: React.FC = () => {
   const rafRef = useRef<number | null>(null);
   const nodesRef = useRef<SnippetNode[]>(nodes);
   nodesRef.current = nodes;
+  const linksRef = useRef<SnippetLink[]>(links);
+  linksRef.current = links;
+
+  const pushHistory = useCallback((curNodes: SnippetNode[], curLinks: SnippetLink[]) => {
+    setHistoryStack((prev) => [...prev.slice(-25), { nodes: curNodes, links: curLinks }]);
+    setRedoStack([]);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (historyStack.length === 0) return;
+    const previous = historyStack[historyStack.length - 1];
+    setRedoStack((prev) => [...prev, { nodes: nodesRef.current, links: linksRef.current }]);
+    setHistoryStack((prev) => prev.slice(0, -1));
+    setNodes(previous.nodes);
+    setLinks(previous.links);
+  }, [historyStack]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setHistoryStack((prev) => [...prev, { nodes: nodesRef.current, links: linksRef.current }]);
+    setRedoStack((prev) => prev.slice(0, -1));
+    setNodes(next.nodes);
+    setLinks(next.links);
+  }, [redoStack]);
 
   useEffect(() => {
     setIsTauri(isTauriEnv());
@@ -48,13 +78,34 @@ export const SnippetBoard: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target as HTMLElement).isContentEditable) {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement).isContentEditable
+      ) {
         return;
       }
-      if (e.key === 'Escape') {
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setShowCommandPalette((p) => !p);
+      } else if (e.key === '/') {
+        e.preventDefault();
+        setShowCommandPalette(true);
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        handleUndo();
+      } else if (
+        ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z'))
+      ) {
+        e.preventDefault();
+        handleRedo();
+      } else if (e.key === 'Escape') {
         setLinkStart(null);
         setShowShortcuts(false);
         setShowTagManager(false);
+        setShowCommandPalette(false);
       } else if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         handleAddSnippet();
@@ -78,7 +129,7 @@ export const SnippetBoard: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleUndo, handleRedo]);
 
   useEffect(() => {
     const boardEl = boardRef.current;
@@ -122,6 +173,7 @@ export const SnippetBoard: React.FC = () => {
   };
 
   const handleAddSnippet = async () => {
+    pushHistory(nodes, links);
     const count = nodes.length;
     const cascadeOffset = (count % 8) * 35;
     const x = Math.max(40, 80 + cascadeOffset - pan.x);
@@ -150,6 +202,7 @@ export const SnippetBoard: React.FC = () => {
       const confirmClear = window.confirm('Start a new investigation? This will clear all clues on the canvas.');
       if (!confirmClear) return;
     }
+    pushHistory(nodes, links);
     const blank = await TauriBridge.clearBoard();
     setNodes([]);
     setLinks([]);
@@ -160,6 +213,7 @@ export const SnippetBoard: React.FC = () => {
   };
 
   const handleLoadDemo = async () => {
+    pushHistory(nodes, links);
     const demo = await TauriBridge.loadDemoData();
     setNodes(demo.nodes || []);
     setLinks(demo.links || []);
@@ -174,44 +228,58 @@ export const SnippetBoard: React.FC = () => {
     TauriBridge.saveNode(updated);
   }, []);
 
-  const handleDeleteNode = useCallback(async (id: number) => {
-    await TauriBridge.deleteNode(id);
-    setNodes((prev) => prev.filter((n) => n.id !== id));
-    setLinks((prev) => prev.filter((l) => l.from_id !== id && l.to_id !== id));
-    if (linkStart === id) {
-      setLinkStart(null);
-    }
-  }, [linkStart]);
-
-  const handleToggleLink = useCallback(async (id: number) => {
-    if (linkStart === null) {
-      setLinkStart(id);
-    } else if (linkStart === id) {
-      setLinkStart(null);
-    } else {
-      const fromId = linkStart;
-      const toId = id;
-      const linkId = await TauriBridge.addLink(fromId, toId);
-      if (linkId > 0) {
-        setLinks((prev) => [...prev, { id: linkId, from_id: fromId, to_id: toId }]);
+  const handleDeleteNode = useCallback(
+    async (id: number) => {
+      pushHistory(nodesRef.current, linksRef.current);
+      await TauriBridge.deleteNode(id);
+      setNodes((prev) => prev.filter((n) => n.id !== id));
+      setLinks((prev) => prev.filter((l) => l.from_id !== id && l.to_id !== id));
+      if (linkStart === id) {
+        setLinkStart(null);
       }
-      setLinkStart(null);
-    }
-  }, [linkStart]);
+    },
+    [linkStart, pushHistory]
+  );
 
-  const handleDeleteLink = useCallback(async (fromId: number, toId: number) => {
-    await TauriBridge.deleteLinkBetween(fromId, toId);
-    setLinks((prev) =>
-      prev.filter(
-        (l) => !((l.from_id === fromId && l.to_id === toId) || (l.from_id === toId && l.to_id === fromId))
-      )
-    );
-  }, []);
+  const handleToggleLink = useCallback(
+    async (id: number) => {
+      if (linkStart === null) {
+        setLinkStart(id);
+      } else if (linkStart === id) {
+        setLinkStart(null);
+      } else {
+        const fromId = linkStart;
+        const toId = id;
+        pushHistory(nodesRef.current, linksRef.current);
+        const linkId = await TauriBridge.addLink(fromId, toId);
+        if (linkId > 0) {
+          setLinks((prev) => [...prev, { id: linkId, from_id: fromId, to_id: toId }]);
+        }
+        setLinkStart(null);
+      }
+    },
+    [linkStart, pushHistory]
+  );
+
+  const handleDeleteLink = useCallback(
+    async (fromId: number, toId: number) => {
+      pushHistory(nodesRef.current, linksRef.current);
+      await TauriBridge.deleteLinkBetween(fromId, toId);
+      setLinks((prev) =>
+        prev.filter(
+          (l) => !((l.from_id === fromId && l.to_id === toId) || (l.from_id === toId && l.to_id === fromId))
+        )
+      );
+    },
+    [pushHistory]
+  );
 
   const handleMouseDownHeader = (e: React.MouseEvent, id: number) => {
     if (e.button !== 0) return;
     const targetNode = nodes.find((n) => n.id === id);
     if (!targetNode || !boardRef.current) return;
+
+    pushHistory(nodesRef.current, linksRef.current);
 
     const boardRect = boardRef.current.getBoundingClientRect();
     const cursorX = (e.clientX - boardRect.left - pan.x) / zoom;
@@ -283,6 +351,7 @@ export const SnippetBoard: React.FC = () => {
   };
 
   const handleAutoRelayout = () => {
+    pushHistory(nodes, links);
     const spacingX = 320;
     const spacingY = 260;
     const cols = Math.max(2, Math.floor((window.innerWidth - 100) / spacingX));
@@ -328,6 +397,22 @@ export const SnippetBoard: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportHtmlDossier = () => {
+    const html = generateInvestigationHtml({
+      title: boardTitle,
+      nodes,
+      links,
+      repo_watch: repoWatch,
+    });
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `investigation_dossier_${Date.now()}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleImport = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -335,6 +420,7 @@ export const SnippetBoard: React.FC = () => {
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
+        pushHistory(nodes, links);
         const text = await file.text();
         const data = await TauriBridge.importBoard(text);
         setNodes(data.nodes || []);
@@ -351,20 +437,35 @@ export const SnippetBoard: React.FC = () => {
     setRepoWatch(info);
   };
 
-  const filteredNodes = useMemo(() => {
+  const handleFocusNode = useCallback((targetNode: SnippetNode) => {
+    if (!boardRef.current) return;
+    const boardRect = boardRef.current.getBoundingClientRect();
+    const centerX = boardRect.width / 2;
+    const centerY = boardRect.height / 2;
+    setZoom(1.0);
+    setPan({
+      x: centerX - targetNode.x - 140,
+      y: centerY - targetNode.y - 100,
+    });
+  }, []);
+
+  const nodeMatchesSearch = useCallback((n: SnippetNode, q: string): boolean => {
+    if (!q.trim()) return true;
+    const lower = q.toLowerCase();
+    return (
+      n.title.toLowerCase().includes(lower) ||
+      (n.code || '').toLowerCase().includes(lower) ||
+      (n.file_path || '').toLowerCase().includes(lower) ||
+      n.tag.toLowerCase().includes(lower)
+    );
+  }, []);
+
+  const filteredByTagNodes = useMemo(() => {
     return nodes.filter((n) => {
       if (selectedFilter !== 'ALL' && n.tag !== selectedFilter) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchTitle = n.title.toLowerCase().includes(q);
-        const matchCode = (n.code || '').toLowerCase().includes(q);
-        const matchFile = (n.file_path || '').toLowerCase().includes(q);
-        const matchTag = n.tag.toLowerCase().includes(q);
-        return matchTitle || matchCode || matchFile || matchTag;
-      }
       return true;
     });
-  }, [nodes, selectedFilter, searchQuery]);
+  }, [nodes, selectedFilter]);
 
   const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -402,6 +503,8 @@ export const SnippetBoard: React.FC = () => {
         onAutoRelayout={handleAutoRelayout}
         onExport={handleExport}
         onExportDossier={handleExportDossier}
+        onExportHtmlDossier={handleExportHtmlDossier}
+        onOpenCommandPalette={() => setShowCommandPalette(true)}
         onImport={handleImport}
         onOpenShortcuts={() => setShowShortcuts(true)}
         onOpenTagManager={() => setShowTagManager(true)}
@@ -460,7 +563,6 @@ export const SnippetBoard: React.FC = () => {
             transformOrigin: '0 0',
           }}
         >
-
           <SvgLinkLayer
             nodes={nodes}
             links={links}
@@ -469,7 +571,7 @@ export const SnippetBoard: React.FC = () => {
             onDeleteLink={handleDeleteLink}
           />
 
-          {filteredNodes.length === 0 && !searchQuery && (
+          {nodes.length === 0 && (
             <div className="empty-canvas-welcome-banner">
               <div className="empty-banner-header">
                 <FolderSearch size={24} className="amber-glow-icon" />
@@ -500,20 +602,27 @@ export const SnippetBoard: React.FC = () => {
             </div>
           )}
 
-          {filteredNodes.map((node) => (
-            <SnippetCard
-              key={node.id}
-              node={node}
-              isArmed={linkStart === node.id}
-              isDragging={dragging?.id === node.id}
-              onMouseDownHeader={handleMouseDownHeader}
-              onUpdateNode={handleUpdateNode}
-              onDeleteNode={handleDeleteNode}
-              onToggleLink={handleToggleLink}
-              customTags={customTags}
-              onOpenTagManager={() => setShowTagManager(true)}
-            />
-          ))}
+          {filteredByTagNodes.map((node) => {
+            const matches = nodeMatchesSearch(node, searchQuery);
+            const isDimmed = !!searchQuery.trim() && !matches;
+            const isHighlighted = !!searchQuery.trim() && matches;
+            return (
+              <SnippetCard
+                key={node.id}
+                node={node}
+                isArmed={linkStart === node.id}
+                isDragging={dragging?.id === node.id}
+                isDimmed={isDimmed}
+                isHighlighted={isHighlighted}
+                onMouseDownHeader={handleMouseDownHeader}
+                onUpdateNode={handleUpdateNode}
+                onDeleteNode={handleDeleteNode}
+                onToggleLink={handleToggleLink}
+                customTags={customTags}
+                onOpenTagManager={() => setShowTagManager(true)}
+              />
+            );
+          })}
         </div>
       </main>
 
@@ -527,6 +636,24 @@ export const SnippetBoard: React.FC = () => {
 
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
 
+      {showCommandPalette && (
+        <CommandPaletteModal
+          nodes={nodes}
+          onSelectNode={handleFocusNode}
+          onAddSnippet={handleAddSnippet}
+          onLoadDemo={handleLoadDemo}
+          onClearBoard={handleNewBoard}
+          onAutoRelayout={handleAutoRelayout}
+          onExportHtml={handleExportHtmlDossier}
+          onExportMarkdown={handleExportDossier}
+          onExportJson={handleExport}
+          onOpenTagManager={() => setShowTagManager(true)}
+          onOpenShortcuts={() => setShowShortcuts(true)}
+          onSetFilter={setSelectedFilter}
+          onClose={() => setShowCommandPalette(false)}
+        />
+      )}
+
       <footer className="board-status-footer">
         <div className="footer-left">
           <SystemTelemetryHUD
@@ -538,6 +665,8 @@ export const SnippetBoard: React.FC = () => {
           />
         </div>
         <div className="footer-right">
+          <span className="shortcut-badge">CTRL+K: PALETTE</span>
+          <span className="shortcut-badge">CTRL+Z: UNDO</span>
           <span className="shortcut-badge">N: ADD</span>
           <span className="shortcut-badge">T: TAGS</span>
           <span className="shortcut-badge">CTRL+WHEEL: ZOOM</span>

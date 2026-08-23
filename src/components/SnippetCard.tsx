@@ -9,6 +9,8 @@ interface Props {
   node: SnippetNode;
   isArmed: boolean;
   isDragging: boolean;
+  isDimmed?: boolean;
+  isHighlighted?: boolean;
   onMouseDownHeader: (e: React.MouseEvent, id: number) => void;
   onUpdateNode: (node: SnippetNode) => void;
   onDeleteNode: (id: number) => void;
@@ -21,6 +23,8 @@ export const SnippetCard: React.FC<Props> = ({
   node,
   isArmed,
   isDragging,
+  isDimmed = false,
+  isHighlighted = false,
   onMouseDownHeader,
   onUpdateNode,
   onDeleteNode,
@@ -28,6 +32,7 @@ export const SnippetCard: React.FC<Props> = ({
   customTags = DEFAULT_TAGS,
   onOpenTagManager,
 }) => {
+
   const [isEditingFilePath, setIsEditingFilePath] = useState(false);
   const [filePathInput, setFilePathInput] = useState(node.file_path || '');
   const [lineRangeInput, setLineRangeInput] = useState(
@@ -102,15 +107,21 @@ export const SnippetCard: React.FC<Props> = ({
     <article
       className={`snippet-card tag-${node.tag.toLowerCase()} ${
         node.mode === 'write' ? 'is-active-editor' : 'is-idle-reader'
-      } ${isArmed ? 'is-armed-link' : ''} ${isDragging ? 'is-dragging' : ''}`}
+      } ${isArmed ? 'is-armed-link' : ''} ${isDragging ? 'is-dragging' : ''} ${
+        isDimmed ? 'is-search-dimmed' : ''
+      } ${isHighlighted ? 'is-search-highlighted' : ''}`}
       style={{
         transform: `translate(${node.x}px, ${node.y}px)`,
-        borderColor: isArmed ? '#ff4d4f' : customBorderColor,
+        borderColor: isArmed ? '#ff4d4f' : isHighlighted ? '#ffb000' : customBorderColor,
+        opacity: isDimmed ? 0.22 : 1,
         boxShadow: isArmed
           ? '0 0 15px rgba(255, 77, 79, 0.6)'
+          : isHighlighted
+          ? '0 0 20px rgba(255, 176, 0, 0.8)'
           : `0 4px 20px rgba(0,0,0,0.8), 0 0 8px ${customBorderColor}25`,
       }}
     >
+
       <header
         className="card-header"
         onMouseDown={(e) => onMouseDownHeader(e, node.id)}

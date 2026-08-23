@@ -14,8 +14,11 @@ import {
   Edit2,
   Check,
   FilePlus,
-  Sparkles
+  Sparkles,
+  FileCode,
+  Terminal
 } from 'lucide-react';
+
 
 interface Props {
   title?: string;
@@ -33,6 +36,8 @@ interface Props {
   onAutoRelayout: () => void;
   onExport: () => void;
   onExportDossier: () => void;
+  onExportHtmlDossier?: () => void;
+  onOpenCommandPalette?: () => void;
   onImport: () => void;
   onOpenShortcuts: () => void;
   onOpenTagManager?: () => void;
@@ -58,6 +63,8 @@ export const Masthead: React.FC<Props> = ({
   onAutoRelayout,
   onExport,
   onExportDossier,
+  onExportHtmlDossier,
+  onOpenCommandPalette,
   onImport,
   onOpenShortcuts,
   onOpenTagManager,
@@ -66,6 +73,7 @@ export const Masthead: React.FC<Props> = ({
   onWatchRepo,
   isTauri,
 }) => {
+
   const [showRepoModal, setShowRepoModal] = useState(false);
   const [repoPathInput, setRepoPathInput] = useState(repoWatch?.path || '');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -265,12 +273,33 @@ export const Masthead: React.FC<Props> = ({
           <button
             type="button"
             className="terminal-btn"
+            onClick={onOpenCommandPalette}
+            title="Open Command Palette & Global Search (Ctrl+K or /)"
+          >
+            <Terminal size={12} />
+            <span>PALETTE</span>
+          </button>
+
+          <button
+            type="button"
+            className="terminal-btn"
+            onClick={onExportHtmlDossier}
+            title="Export interactive offline HTML Investigation Report"
+          >
+            <FileCode size={12} />
+            <span>HTML</span>
+          </button>
+
+          <button
+            type="button"
+            className="terminal-btn"
             onClick={onExportDossier}
             title="Export Markdown Investigation Dossier with Mermaid flowchart"
           >
             <FileText size={12} />
-            <span>DOSSIER.MD</span>
+            <span>MD</span>
           </button>
+
 
           <button
             type="button"
