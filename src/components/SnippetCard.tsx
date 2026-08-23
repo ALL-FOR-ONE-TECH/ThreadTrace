@@ -52,8 +52,9 @@ export const SnippetCard: React.FC<Props> = ({
     node.line_start && node.line_end ? `${node.line_start}-${node.line_end}` : ''
   );
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
-  const [showNotes, setShowNotes] = useState(Boolean(node.notes && node.notes.trim().length > 0));
+  const [showNotes, setShowNotes] = useState(false);
   const [isApplyingSource, setIsApplyingSource] = useState(false);
+
   const [applySuccessMsg, setApplySuccessMsg] = useState<string | null>(null);
 
   const cardWidth = node.width || 340;

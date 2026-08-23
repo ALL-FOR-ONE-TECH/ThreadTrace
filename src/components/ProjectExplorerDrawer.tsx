@@ -62,23 +62,22 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
     TauriBridge.listSystemDrives().then((d) => setDrives(d));
   }, []);
 
-  // Update currentDir if currentRepoPath changes
-  useEffect(() => {
-    if (currentRepoPath) {
-      setCurrentDir(currentRepoPath);
-    }
-  }, [currentRepoPath]);
-
-  // Load directory entries when currentDir changes
+  // Load directory entries cleanly without trigger cascading watcher loops
   useEffect(() => {
     if (!isOpen) return;
+    let isCancelled = false;
     setIsLoading(true);
     TauriBridge.readDirEntries(currentDir).then((entries) => {
-      setDirEntries(entries);
-      setIsLoading(false);
-      onWatchRepo(currentDir);
+      if (!isCancelled) {
+        setDirEntries(entries);
+        setIsLoading(false);
+      }
     });
-  }, [currentDir, isOpen, onWatchRepo]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentDir, isOpen]);
+
 
   // Load full file content when selectedFile changes
   useEffect(() => {
@@ -132,7 +131,9 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
     setCurrentDir(drive);
     setExpandedFolders({});
     setSelectedFile(null);
+    if (onWatchRepo) onWatchRepo(drive);
   };
+
 
   const handlePin = (e: React.FormEvent) => {
     e.preventDefault();

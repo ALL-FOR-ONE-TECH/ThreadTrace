@@ -573,10 +573,11 @@ export const SnippetBoard: React.FC = () => {
     }
   };
 
-  const handleWatchRepo = async (path: string) => {
+  const handleWatchRepo = useCallback(async (path: string) => {
     const info = await TauriBridge.watchRepo(path);
     setRepoWatch(info);
-  };
+  }, []);
+
 
   const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {
