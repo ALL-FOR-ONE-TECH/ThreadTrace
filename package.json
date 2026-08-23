@@ -1,9 +1,17 @@
 {
   "name": "thread-trace",
-  "private": true,
   "version": "1.0.0",
-
+  "description": "Spatial Code Investigation Canvas & Low-Memory Evidence Board",
+  "author": "ALL-FOR-ONE-TECH <karthikeyan56v@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ALL-FOR-ONE-TECH/ThreadTrace.git"
+  },
+  "homepage": "https://github.com/ALL-FOR-ONE-TECH/ThreadTrace",
+  "bugs": "https://github.com/ALL-FOR-ONE-TECH/ThreadTrace/issues",
   "type": "module",
+
   "scripts": {
     "dev": "vite",
     "build": "vite build",

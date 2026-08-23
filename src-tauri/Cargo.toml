@@ -1,13 +1,16 @@
 [package]
 name = "thread-trace"
 version = "1.0.0"
-description = "ThreadTrace: Terminal Investigation Canvas & Low-Memory Evidence Board"
-authors = ["ThreadTrace Team"]
+description = "ThreadTrace: Spatial Code Investigation Canvas & Low-Memory Evidence Board"
+authors = ["ALL-FOR-ONE-TECH <karthikeyan56v@gmail.com>"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/ALL-FOR-ONE-TECH/ThreadTrace"
 
 [lib]
 name = "thread_trace_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
 
 
 [build-dependencies]
