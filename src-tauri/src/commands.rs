@@ -75,6 +75,17 @@ pub fn list_repo_files_cmd(repo_path: String) -> Vec<String> {
     git_watcher::list_repo_files(&repo_path)
 }
 
+#[tauri::command]
+pub fn list_system_drives_cmd() -> Vec<String> {
+    git_watcher::list_system_drives()
+}
+
+#[tauri::command]
+pub fn read_dir_entries_cmd(dir_path: String) -> Vec<crate::models::DirEntryItem> {
+    git_watcher::read_dir_entries(&dir_path)
+}
+
+
 
 #[tauri::command]
 pub fn watch_repo_cmd(state: State<'_, AppState>, repo_path: String) -> Result<RepoWatchInfo, String> {

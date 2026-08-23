@@ -191,7 +191,69 @@ pub fn list_repo_files(repo_path: &str) -> Vec<String> {
     files
 }
 
+pub fn list_system_drives() -> Vec<String> {
+
+    let mut drives = Vec::new();
+    #[cfg(target_os = "windows")]
+    {
+        for b in b'A'..=b'Z' {
+            let letter = b as char;
+            let root = format!("{}:\\", letter);
+            if Path::new(&root).exists() {
+                drives.push(root);
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        drives.push("/".to_string());
+    }
+    if drives.is_empty() {
+        drives.push(".".to_string());
+    }
+    drives
+}
+
+pub fn read_dir_entries(dir_path: &str) -> Vec<crate::models::DirEntryItem> {
+    let mut items = Vec::new();
+    let p = Path::new(dir_path);
+    if !p.exists() || !p.is_dir() {
+        return items;
+    }
+
+    if let Ok(entries) = std::fs::read_dir(p) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name == "node_modules" || name == "target" || name == "dist" {
+                continue;
+            }
+            let is_dir = path.is_dir();
+            let size_bytes = if is_dir { 0 } else { entry.metadata().map(|m| m.len()).unwrap_or(0) };
+            items.push(crate::models::DirEntryItem {
+                name,
+                path: path.to_string_lossy().replace('\\', "/"),
+                is_dir,
+                size_bytes,
+            });
+        }
+    }
+
+    items.sort_by(|a, b| {
+        if a.is_dir == b.is_dir {
+            a.name.to_lowercase().cmp(&b.name.to_lowercase())
+        } else if a.is_dir {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        }
+    });
+
+    items
+}
+
 #[cfg(test)]
+
 
 mod tests {
     use super::*;

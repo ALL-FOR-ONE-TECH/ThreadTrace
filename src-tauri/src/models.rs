@@ -64,3 +64,12 @@ pub struct ProcessTelemetry {
     pub uptime_seconds: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirEntryItem {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub size_bytes: u64,
+}
+
+

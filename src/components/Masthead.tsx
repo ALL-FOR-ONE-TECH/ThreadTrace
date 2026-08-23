@@ -15,10 +15,14 @@ import {
   Check,
   FilePlus,
   Sparkles,
+  FolderOpen,
+  HardDrive,
   FileCode,
   Terminal,
-  FolderOpen,
 } from 'lucide-react';
+
+
+
 
 
 
@@ -37,8 +41,12 @@ interface Props {
   onLoadDemo: () => void;
   onAutoRelayout: () => void;
   onExport: () => void;
-  onExportDossier: () => void;
+
+  onExportDossier?: () => void;
   onExportHtmlDossier?: () => void;
+  isDemoActive?: boolean;
+  onOpenExplorer?: () => void;
+
   onOpenCommandPalette?: () => void;
   onOpenFilePicker?: () => void;
   onImport: () => void;
@@ -49,6 +57,7 @@ interface Props {
   onWatchRepo: (path: string) => void;
   isTauri: boolean;
 }
+
 
 
 export const Masthead: React.FC<Props> = ({
@@ -64,7 +73,10 @@ export const Masthead: React.FC<Props> = ({
   onAddSnippet,
   onNewBoard,
   onLoadDemo,
+  isDemoActive = false,
+  onOpenExplorer,
   onAutoRelayout,
+
   onExport,
   onExportDossier,
   onExportHtmlDossier,
@@ -241,12 +253,23 @@ export const Masthead: React.FC<Props> = ({
             <button
               type="button"
               className="terminal-btn"
+              onClick={onOpenExplorer}
+              title="Open Project Explorer & File Tree (E)"
+            >
+              <HardDrive size={13} />
+              <span>EXPLORER</span>
+            </button>
+
+            <button
+              type="button"
+              className={`terminal-btn ${isDemoActive ? 'primary-btn' : ''}`}
               onClick={onLoadDemo}
-              title="Load sample investigation case"
+              title={isDemoActive ? 'Revert demo back to your personal workspace' : 'Load sample auth investigation case'}
             >
               <Sparkles size={13} />
-              <span>DEMO</span>
+              <span>{isDemoActive ? 'REVERT DEMO' : 'DEMO'}</span>
             </button>
+
 
             <button
               type="button"

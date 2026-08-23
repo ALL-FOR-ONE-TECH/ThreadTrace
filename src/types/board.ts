@@ -91,3 +91,11 @@ export interface ResizingState {
   initialMouseX: number;
   initialMouseY: number;
 }
+
+export interface DirEntryItem {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size_bytes: number;
+}
+

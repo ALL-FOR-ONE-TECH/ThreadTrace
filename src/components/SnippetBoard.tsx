@@ -18,6 +18,7 @@ import { ShortcutsModal } from './ShortcutsModal';
 import { TagManagerModal } from './TagManagerModal';
 import { CommandPaletteModal } from './CommandPaletteModal';
 import { FilePickerModal } from './FilePickerModal';
+import { ProjectExplorerDrawer } from './ProjectExplorerDrawer';
 import { SystemTelemetryHUD } from './SystemTelemetryHUD';
 import { generateInvestigationMarkdown } from '../services/dossierExport';
 import { generateInvestigationHtml } from '../services/htmlDossierExport';
@@ -38,6 +39,14 @@ export const SnippetBoard: React.FC = () => {
   const [showTagManager, setShowTagManager] = useState<boolean>(false);
   const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
   const [showFilePicker, setShowFilePicker] = useState<boolean>(false);
+  const [showExplorer, setShowExplorer] = useState<boolean>(false);
+  const [isDemoActive, setIsDemoActive] = useState<boolean>(false);
+  const [savedUserBoard, setSavedUserBoard] = useState<{
+    title: string;
+    nodes: SnippetNode[];
+    links: SnippetLink[];
+  } | null>(null);
+
   const [historyStack, setHistoryStack] = useState<{ nodes: SnippetNode[]; links: SnippetLink[] }[]>([]);
   const [redoStack, setRedoStack] = useState<{ nodes: SnippetNode[]; links: SnippetLink[] }[]>([]);
   const [repoWatch, setRepoWatch] = useState<RepoWatchInfo | null>(null);
@@ -119,9 +128,13 @@ export const SnippetBoard: React.FC = () => {
         setShowTagManager(false);
         setShowCommandPalette(false);
         setShowFilePicker(false);
+        setShowExplorer(false);
       } else if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         handleAddSnippet();
+      } else if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault();
+        setShowExplorer((v) => !v);
       } else if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         setShowFilePicker(true);
@@ -520,15 +533,36 @@ export const SnippetBoard: React.FC = () => {
     setNodes(blank.nodes);
     setLinks(blank.links);
     setBoardTitle(blank.title || 'THREAD_TRACE // NEW_INVESTIGATION');
+    setIsDemoActive(false);
   };
 
-  const handleLoadDemo = async () => {
+  const handleToggleDemo = async () => {
     pushHistory(nodes, links);
-    const demo = await TauriBridge.loadDemoData();
-    setNodes(demo.nodes);
-    setLinks(demo.links);
-    setBoardTitle(demo.title || 'THREAD_TRACE // AUTH_INVESTIGATION');
-    if (demo.repo_watch) setRepoWatch(demo.repo_watch);
+    if (isDemoActive) {
+      if (savedUserBoard) {
+        setNodes(savedUserBoard.nodes);
+        setLinks(savedUserBoard.links);
+        setBoardTitle(savedUserBoard.title);
+      } else {
+        const blank = await TauriBridge.clearBoard();
+        setNodes(blank.nodes);
+        setLinks(blank.links);
+        setBoardTitle(blank.title || 'THREAD_TRACE // NEW_INVESTIGATION');
+      }
+      setIsDemoActive(false);
+    } else {
+      setSavedUserBoard({
+        title: boardTitle,
+        nodes,
+        links,
+      });
+      const demo = await TauriBridge.loadDemoData();
+      setNodes(demo.nodes);
+      setLinks(demo.links);
+      setBoardTitle(demo.title || 'THREAD_TRACE // AUTH_INVESTIGATION');
+      if (demo.repo_watch) setRepoWatch(demo.repo_watch);
+      setIsDemoActive(true);
+    }
   };
 
   const handleWatchRepo = async (path: string) => {
@@ -600,8 +634,10 @@ export const SnippetBoard: React.FC = () => {
         onSearchChange={setSearchQuery}
         onAddSnippet={handleAddSnippet}
         onOpenFilePicker={() => setShowFilePicker(true)}
+        onOpenExplorer={() => setShowExplorer((v) => !v)}
+        isDemoActive={isDemoActive}
         onNewBoard={handleNewBoard}
-        onLoadDemo={handleLoadDemo}
+        onLoadDemo={handleToggleDemo}
         onAutoRelayout={handleAutoRelayout}
         onExport={handleExport}
         onExportDossier={handleExportDossier}
@@ -614,6 +650,16 @@ export const SnippetBoard: React.FC = () => {
         repoWatch={repoWatch}
         onWatchRepo={handleWatchRepo}
         isTauri={isTauri}
+      />
+
+      {/* Project File Tree Explorer Drawer */}
+      <ProjectExplorerDrawer
+        isOpen={showExplorer}
+        onClose={() => setShowExplorer(false)}
+        currentRepoPath={repoWatch?.path}
+        onWatchRepo={handleWatchRepo}
+        onPinClue={handlePinFromPicker}
+        customTags={customTags}
       />
 
       <Minimap
@@ -681,16 +727,16 @@ export const SnippetBoard: React.FC = () => {
               </div>
               <p className="empty-banner-text">
                 No investigation clues pinned to this evidence board yet.
-                Browse source files to slice code, pin hypotheses, or load the demo investigation.
+                Open the Project File Tree Explorer (<kbd>E</kbd>) to slice code, pin hypotheses, or load the demo case.
               </p>
               <div className="empty-banner-actions">
                 <button
                   type="button"
                   className="terminal-btn"
-                  onClick={() => setShowFilePicker(true)}
+                  onClick={() => setShowExplorer(true)}
                 >
                   <FolderOpen size={14} />
-                  <span>📂 ATTACH FROM FILE (F)</span>
+                  <span>📁 EXPLORE PROJECT TREE (E)</span>
                 </button>
                 <button
                   type="button"
@@ -703,7 +749,7 @@ export const SnippetBoard: React.FC = () => {
                 <button
                   type="button"
                   className="terminal-btn"
-                  onClick={handleLoadDemo}
+                  onClick={handleToggleDemo}
                 >
                   <Sparkles size={14} />
                   <span>⚡ LOAD DEMO CASE</span>
@@ -762,8 +808,7 @@ export const SnippetBoard: React.FC = () => {
           nodes={nodes}
           onSelectNode={(node) => handleFocusNode(node.id)}
           onAddSnippet={handleAddSnippet}
-
-          onLoadDemo={handleLoadDemo}
+          onLoadDemo={handleToggleDemo}
           onClearBoard={handleNewBoard}
           onAutoRelayout={handleAutoRelayout}
           onExportHtml={handleExportHtmlDossier}
@@ -787,6 +832,7 @@ export const SnippetBoard: React.FC = () => {
           />
         </div>
         <div className="footer-right">
+          <span className="shortcut-badge">E: EXPLORER</span>
           <span className="shortcut-badge">F: ATTACH FILE</span>
           <span className="shortcut-badge">CTRL+K: PALETTE</span>
           <span className="shortcut-badge">CTRL+Z: UNDO</span>

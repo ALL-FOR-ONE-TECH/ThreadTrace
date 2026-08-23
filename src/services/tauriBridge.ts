@@ -385,6 +385,33 @@ export const TauriBridge = {
       'README.md',
     ];
   },
+
+  async listSystemDrives(): Promise<string[]> {
+    if (isTauriEnv()) {
+      try {
+        return await invoke<string[]>('list_system_drives_cmd');
+      } catch (err) {
+        console.warn('Tauri list_system_drives_cmd failed', err);
+      }
+    }
+    return ['C:/', 'D:/', 'X:/'];
+  },
+
+  async readDirEntries(dirPath: string): Promise<import('../types/board').DirEntryItem[]> {
+    if (isTauriEnv()) {
+      try {
+        return await invoke<import('../types/board').DirEntryItem[]>('read_dir_entries_cmd', { dirPath });
+      } catch (err) {
+        console.warn('Tauri read_dir_entries_cmd failed', err);
+      }
+    }
+    return [
+      { name: 'src', path: `${dirPath}/src`, is_dir: true, size_bytes: 0 },
+      { name: 'package.json', path: `${dirPath}/package.json`, is_dir: false, size_bytes: 1200 },
+      { name: 'README.md', path: `${dirPath}/README.md`, is_dir: false, size_bytes: 3400 },
+    ];
+  },
 };
+
 
 

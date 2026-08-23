@@ -11,18 +11,18 @@ interface Props {
 const PRESET_COLORS = [
   '#ff4d4f', // Crimson
   '#ffb000', // Amber
-  '#52c41a', // Emerald
-  '#13c2c2', // Cyan
-  '#1890ff', // Cobalt
-  '#722ed1', // Purple
-  '#eb2f96', // Magenta
-  '#faad14', // Gold
+  '#00e676', // Emerald
+  '#00e5ff', // Cyan
+  '#2979ff', // Cobalt
+  '#d500f9', // Magenta
+  '#ff9100', // Orange
+  '#76ff03', // Lime
 ];
 
 export const TagManagerModal: React.FC<Props> = ({ tags, onSaveTags, onClose }) => {
   const [newTagId, setNewTagId] = useState('');
   const [newTagSub, setNewTagSub] = useState('');
-  const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[5]);
+  const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[4]);
 
   const handleAddTag = (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +33,6 @@ export const TagManagerModal: React.FC<Props> = ({ tags, onSaveTags, onClose }) 
       alert(`Tag "${cleanId}" already exists.`);
       return;
     }
-
 
     const newTag: CustomTag = {
       id: cleanId,
@@ -55,14 +54,14 @@ export const TagManagerModal: React.FC<Props> = ({ tags, onSaveTags, onClose }) 
   };
 
   return (
-    <div className="shortcuts-modal-backdrop" onClick={onClose}>
-      <div className="shortcuts-modal tag-manager-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="terminal-modal-overlay" onClick={onClose}>
+      <div className="terminal-modal tag-manager-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">
-            <Tag size={14} className="terminal-icon-pulse" />
+            <Tag size={14} className="amber-glow-icon" />
             <span>[CUSTOM_TAG_ENGINE // CLUE CLASSIFICATION]</span>
           </div>
-          <button className="modal-close-btn" onClick={onClose}>
+          <button type="button" className="modal-close-btn" onClick={onClose}>
             <X size={14} />
           </button>
         </div>
@@ -79,12 +78,13 @@ export const TagManagerModal: React.FC<Props> = ({ tags, onSaveTags, onClose }) 
                 <label className="terminal-label">TAG ID (e.g. SECURITY):</label>
                 <input
                   type="text"
-                  className="terminal-input"
+                  className="terminal-input tag-text-input"
                   placeholder="SECURITY"
                   value={newTagId}
                   onChange={(e) => setNewTagId(e.target.value)}
                   maxLength={16}
                   required
+                  autoFocus
                 />
               </div>
 
@@ -92,7 +92,7 @@ export const TagManagerModal: React.FC<Props> = ({ tags, onSaveTags, onClose }) 
                 <label className="terminal-label">SUB-LABEL (OPTIONAL):</label>
                 <input
                   type="text"
-                  className="terminal-input"
+                  className="terminal-input tag-text-input"
                   placeholder="CVE_AUDIT"
                   value={newTagSub}
                   onChange={(e) => setNewTagSub(e.target.value)}
@@ -117,22 +117,25 @@ export const TagManagerModal: React.FC<Props> = ({ tags, onSaveTags, onClose }) 
             </div>
 
             <div className="tag-live-preview-box">
-              <span className="preview-label">LIVE PREVIEW:</span>
-              <span
-                className="tag-pill-preview"
-                style={{
-                  color: selectedColor,
-                  borderColor: selectedColor,
-                  backgroundColor: `${selectedColor}18`,
-                  boxShadow: `0 0 8px ${selectedColor}40`,
-                }}
-              >
-                {newTagId.trim().toUpperCase() || 'SAMPLE_TAG'}
-                {newTagSub.trim() ? ` [${newTagSub.trim().toUpperCase()}]` : ''}
-              </span>
+              <div className="preview-label-group">
+                <span className="preview-label">LIVE PREVIEW:</span>
+                <span
+                  className="tag-pill-preview"
+                  style={{
+                    color: selectedColor,
+                    borderColor: selectedColor,
+                    backgroundColor: `${selectedColor}18`,
+                    boxShadow: `0 0 10px ${selectedColor}40`,
+                  }}
+                >
+                  {newTagId.trim().toUpperCase() || 'SAMPLE_TAG'}
+                  {newTagSub.trim() ? ` [${newTagSub.trim().toUpperCase()}]` : ''}
+                </span>
+              </div>
 
               <button type="submit" className="terminal-btn primary-btn add-tag-btn">
-                + REGISTER TAG
+                <Plus size={12} />
+                <span>REGISTER TAG</span>
               </button>
             </div>
           </form>
@@ -174,9 +177,8 @@ export const TagManagerModal: React.FC<Props> = ({ tags, onSaveTags, onClose }) 
           </div>
         </div>
 
-
         <div className="modal-footer">
-          <button className="terminal-btn primary-btn" onClick={onClose}>
+          <button type="button" className="terminal-btn primary-btn" onClick={onClose}>
             DONE [ESC]
           </button>
         </div>
@@ -184,4 +186,3 @@ export const TagManagerModal: React.FC<Props> = ({ tags, onSaveTags, onClose }) 
     </div>
   );
 };
-
