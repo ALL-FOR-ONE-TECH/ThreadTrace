@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/refs/heads/v2/crates/tauri-config-schema/schema.json",
   "productName": "ThreadTrace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "identifier": "tech.allforone.threadtrace",
   "build": {
     "beforeDevCommand": "npm run dev",

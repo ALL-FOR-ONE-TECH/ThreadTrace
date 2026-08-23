@@ -1,6 +1,6 @@
 [package]
 name = "thread-trace"
-version = "1.0.0"
+version = "1.0.1"
 description = "ThreadTrace: Spatial Code Investigation Canvas & Low-Memory Evidence Board"
 authors = ["ALL-FOR-ONE-TECH <karthikeyan56v@gmail.com>"]
 edition = "2021"
