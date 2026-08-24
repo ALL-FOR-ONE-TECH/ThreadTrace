@@ -92,14 +92,15 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
       setSelectedSnippet('');
       return;
     }
-    TauriBridge.readFileBacking(selectedFile, 1, 1000).then((content) => {
+    TauriBridge.readFileBacking(selectedFile, 1, 99999).then((content) => {
       setFullFileContent(content);
       setSelectedSnippet(content);
       const basename = selectedFile.split(/[\\/]/).pop()?.toUpperCase() || 'SNIPPET';
-      setTitle(`${basename}_L1_20`);
       setLineStart(1);
       const lines = content.split('\n');
-      setLineEnd(Math.min(20, Math.max(1, lines.length)));
+      const endLine = Math.min(20, Math.max(1, lines.length));
+      setLineEnd(endLine);
+      setTitle(`${basename}_L1_${endLine}`);
     });
   }, [selectedFile]);
 
@@ -128,22 +129,32 @@ export const ProjectExplorerDrawer: React.FC<Props> = ({
     };
   }, [isDraggingSplitter]);
 
-  // Handle Mouse Selection directly inside the Code Viewer
+  // Handle Mouse Selection directly inside the Code Viewer with accurate line bounds
   const handleMouseSelection = () => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return;
 
     const selectedText = selection.toString();
-    if (selectedText.trim().length > 0) {
+    if (selectedText.trim().length > 0 && selectedFile) {
       setSelectedSnippet(selectedText);
-      const selectedLineCount = selectedText.split('\n').length;
-      if (selectedFile) {
+      const matchIndex = fullFileContent.indexOf(selectedText);
+      if (matchIndex !== -1) {
+        const linesBefore = fullFileContent.substring(0, matchIndex).split('\n').length;
+        const selectedLineCount = selectedText.split('\n').length;
+        const computedEnd = linesBefore + selectedLineCount - 1;
+        setLineStart(linesBefore);
+        setLineEnd(computedEnd);
+        const basename = selectedFile.split(/[\\/]/).pop()?.toUpperCase() || 'SNIPPET';
+        setTitle(`${basename}_L${linesBefore}_${computedEnd}`);
+      } else {
+        const selectedLineCount = selectedText.split('\n').length;
+        setLineEnd(lineStart + selectedLineCount - 1);
         const basename = selectedFile.split(/[\\/]/).pop()?.toUpperCase() || 'SNIPPET';
         setTitle(`${basename}_SNIPPET`);
-        setLineEnd(lineStart + selectedLineCount - 1);
       }
     }
   };
+
 
   const toggleFolder = async (folderPath: string) => {
     if (expandedFolders[folderPath]) {

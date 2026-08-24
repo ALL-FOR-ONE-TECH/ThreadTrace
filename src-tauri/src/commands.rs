@@ -13,11 +13,13 @@ pub struct AppState {
 
 #[tauri::command]
 pub fn get_board_state(state: State<'_, AppState>) -> Result<BoardData, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let mut data = db::get_board_data(&conn).map_err(|e| e.to_string())?;
+    let mut data = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        db::get_board_data(&conn).map_err(|e| e.to_string())?
+    };
 
-    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?;
-    if let Some(ref path) = *watched {
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
+    if let Some(ref path) = watched {
         let mut git_info = git_watcher::get_git_info(path);
         git_info.is_watching = true;
         data.repo_watch = Some(git_info);
@@ -29,6 +31,7 @@ pub fn get_board_state(state: State<'_, AppState>) -> Result<BoardData, String> 
 
     Ok(data)
 }
+
 
 #[tauri::command]
 pub fn save_node_cmd(state: State<'_, AppState>, node: SnippetNode) -> Result<i64, String> {
@@ -124,20 +127,23 @@ pub fn export_board_cmd(state: State<'_, AppState>) -> Result<String, String> {
 #[tauri::command]
 pub fn import_board_cmd(state: State<'_, AppState>, json_content: String) -> Result<BoardData, String> {
     let data: BoardData = serde_json::from_str(&json_content).map_err(|e| e.to_string())?;
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
 
-    conn.execute("DELETE FROM links", []).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM nodes", []).map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM links", []).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM nodes", []).map_err(|e| e.to_string())?;
 
     for n in &data.nodes {
-        db::upsert_node(&conn, n).map_err(|e| e.to_string())?;
+        db::upsert_node(&tx, n).map_err(|e| e.to_string())?;
     }
     for l in &data.links {
-        db::add_link(&conn, l.from_id, l.to_id).map_err(|e| e.to_string())?;
+        db::add_link(&tx, l.from_id, l.to_id).map_err(|e| e.to_string())?;
     }
+    tx.commit().map_err(|e| e.to_string())?;
 
     db::get_board_data(&conn).map_err(|e| e.to_string())
 }
+
 
 #[tauri::command]
 pub fn clear_board_cmd(state: State<'_, AppState>) -> Result<(), String> {

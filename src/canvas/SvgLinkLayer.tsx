@@ -19,10 +19,11 @@ export const SvgLinkLayer: React.FC<Props> = ({
   const getNodeAnchor = (id: number) => {
     const node = nodes.find((n) => n.id === id);
     if (!node) return null;
+    const cardWidth = node.width || 340;
     // Anchor to top-right pin position of the card header
     return {
-      x: node.x + 256,
-      y: node.y + 20,
+      x: node.x + cardWidth - 28,
+      y: node.y + 18,
     };
   };
 
@@ -38,21 +39,30 @@ export const SvgLinkLayer: React.FC<Props> = ({
 
   const startNodeAnchor = linkStart ? getNodeAnchor(linkStart) : null;
 
+  const minBoundX = nodes.length > 0 ? Math.min(0, ...nodes.map((n) => n.x - 400)) : 0;
+  const minBoundY = nodes.length > 0 ? Math.min(0, ...nodes.map((n) => n.y - 400)) : 0;
+  const maxBoundX = nodes.length > 0 ? Math.max(5000, ...nodes.map((n) => n.x + (n.width || 340) + 600)) : 5000;
+  const maxBoundY = nodes.length > 0 ? Math.max(4000, ...nodes.map((n) => n.y + (n.height || 260) + 600)) : 4000;
+  const svgW = maxBoundX - minBoundX;
+  const svgH = maxBoundY - minBoundY;
+
   return (
     <svg
       className="evidence-link-svg-layer"
-      width="5000"
-      height="4000"
+      width={svgW}
+      height={svgH}
       style={{
         position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '5000px',
-        height: '4000px',
+        top: `${minBoundY}px`,
+        left: `${minBoundX}px`,
+        width: `${svgW}px`,
+        height: `${svgH}px`,
         pointerEvents: 'none',
         zIndex: 5,
       }}
+      viewBox={`${minBoundX} ${minBoundY} ${svgW} ${svgH}`}
     >
+
       <defs>
         <filter id="string-glow" x="-30%" y="-30%" width="160%" height="160%">
           <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#ff3b30" floodOpacity="0.8" />

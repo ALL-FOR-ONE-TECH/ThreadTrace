@@ -11,7 +11,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 pub fn get_git_info(repo_path: &str) -> RepoWatchInfo {
     let p = Path::new(repo_path);
-    if !p.exists() || (!p.join(".git").exists() && !p.join("../.git").exists()) {
+    if !p.exists() {
         return RepoWatchInfo {
             path: repo_path.to_string(),
             branch: None,
@@ -21,6 +21,22 @@ pub fn get_git_info(repo_path: &str) -> RepoWatchInfo {
         };
     }
 
+    // Verify repository root or subdirectory via git CLI
+    let mut check_git = Command::new("git");
+    check_git.args(["rev-parse", "--is-inside-work-tree"]).current_dir(p);
+    #[cfg(target_os = "windows")]
+    check_git.creation_flags(CREATE_NO_WINDOW);
+
+    let is_git = check_git.output().map(|o| o.status.success()).unwrap_or(false);
+    if !is_git {
+        return RepoWatchInfo {
+            path: repo_path.to_string(),
+            branch: None,
+            last_commit: None,
+            diff_summary: None,
+            is_watching: false,
+        };
+    }
 
     let mut cmd_commit = Command::new("git");
     cmd_commit.args(["log", "-1", "--pretty=format:%h: %s (%cr)"]).current_dir(p);
@@ -82,7 +98,7 @@ pub fn read_file_slice(file_path: &str, line_start: Option<i32>, line_end: Optio
             line_end: line_end.unwrap_or(1),
             total_lines: 0,
             exists: false,
-            error: Some(format!("File not found: {}", file_path)),
+            error: Some(format!("File does not exist: {}", file_path)),
         };
     }
 
@@ -134,25 +150,68 @@ pub fn write_file_slice(file_path: &str, line_start: i32, line_end: i32, new_con
         return Err(format!("File not found: {}", file_path));
     }
 
-    let file = File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
-    let reader = BufReader::new(file);
-    let all_lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
-    let total_lines = all_lines.len();
-
-    let start = (line_start.max(1) as usize).saturating_sub(1);
-    let end = (line_end.max(1) as usize).min(total_lines);
-
-    let replacement_lines: Vec<String> = new_content.lines().map(|s| s.to_string()).collect();
-
-    let mut result_lines = Vec::new();
-    result_lines.extend_from_slice(&all_lines[..start.min(total_lines)]);
-    result_lines.extend(replacement_lines);
-    if end < total_lines {
-        result_lines.extend_from_slice(&all_lines[end..]);
+    let raw_bytes = std::fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
+    
+    // Check for binary NULL bytes in the first 8KB
+    let check_len = raw_bytes.len().min(8192);
+    if raw_bytes[..check_len].contains(&0x00) {
+        return Err("Binary file detected. Writing slices to binary files is blocked to prevent corruption.".to_string());
     }
 
-    let updated_text = result_lines.join("\n");
-    std::fs::write(path, updated_text).map_err(|e| format!("Failed to write file: {}", e))?;
+    let text = String::from_utf8(raw_bytes).map_err(|_| "File contains invalid UTF-8 encoding.".to_string())?;
+
+    let is_crlf = text.contains("\r\n");
+    let has_trailing_newline = text.ends_with('\n');
+    let eol = if is_crlf { "\r\n" } else { "\n" };
+
+    let all_lines: Vec<&str> = if is_crlf {
+        text.split("\r\n").collect()
+    } else {
+        text.split('\n').collect()
+    };
+    
+    // Drop phantom empty line from trailing newline
+    let all_lines: Vec<&str> = if has_trailing_newline && all_lines.last() == Some(&"") {
+        all_lines[..all_lines.len() - 1].to_vec()
+    } else {
+        all_lines
+    };
+    let total_lines = all_lines.len();
+
+    let (norm_start, norm_end) = if line_start <= line_end {
+        (line_start, line_end)
+    } else {
+        (line_end, line_start)
+    };
+
+    let slice_start = (norm_start.max(1) as usize).saturating_sub(1).min(total_lines);
+    let slice_end = (norm_end.max(1) as usize).clamp(slice_start, total_lines);
+
+    let replacement_lines: Vec<&str> = if new_content.is_empty() {
+        Vec::new()
+    } else {
+        new_content.lines().collect()
+    };
+
+    let mut result_lines: Vec<&str> = Vec::new();
+    result_lines.extend_from_slice(&all_lines[..slice_start]);
+    result_lines.extend(replacement_lines);
+    if slice_end < total_lines {
+        result_lines.extend_from_slice(&all_lines[slice_end..]);
+    }
+
+    let mut updated_text = result_lines.join(eol);
+    if has_trailing_newline && !updated_text.ends_with(eol) && !updated_text.is_empty() {
+        updated_text.push_str(eol);
+    }
+
+    // Atomic write via temporary file
+    let tmp_path = path.with_extension(format!("tmp.{}", std::process::id()));
+    std::fs::write(&tmp_path, updated_text.as_bytes()).map_err(|e| format!("Failed to write temp file: {}", e))?;
+    std::fs::rename(&tmp_path, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("Failed to atomically replace file: {}", e)
+    })?;
 
     Ok(())
 }

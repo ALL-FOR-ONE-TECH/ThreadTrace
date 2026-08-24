@@ -21,14 +21,13 @@ export const StaticCodeViewer: React.FC<Props> = ({ code, filePath, startLine = 
     const lang = ext === 'rs' ? 'rust' : ext === 'json' ? 'json' : ext === 'log' ? 'log' : 'typescript';
     const grammar = Prism.languages[lang] || Prism.languages.javascript || Prism.languages.clike;
 
-    return raw.split('\n').map((line, idx) => {
-      const highlighted = Prism.highlight(line || ' ', grammar, lang);
-      return {
-        num: lineStart + idx,
-        html: highlighted,
-      };
-    });
+    const fullHighlighted = Prism.highlight(raw, grammar, lang);
+    return fullHighlighted.split('\n').map((htmlLine, idx) => ({
+      num: lineStart + idx,
+      html: htmlLine || '&nbsp;',
+    }));
   }, [code, filePath, lineStart]);
+
 
   return (
     <div className="static-code-viewer">

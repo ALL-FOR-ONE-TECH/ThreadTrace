@@ -164,8 +164,9 @@ pub fn upsert_node(conn: &Connection, node: &SnippetNode) -> Result<i64> {
     let width = node.width.unwrap_or(340.0);
     let height = node.height.unwrap_or(260.0);
 
-    if let Some(id) = node.id {
+    if let Some(id) = node.id.filter(|&id| id > 0) {
         conn.execute(
+
             r#"
             INSERT INTO nodes (id, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)

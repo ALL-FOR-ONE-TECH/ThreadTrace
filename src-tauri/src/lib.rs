@@ -29,7 +29,9 @@ pub fn run() {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!("Warning: Failed to open DB at {:?}: {}. Falling back to in-memory DB.", db_path, e);
-                    Connection::open_in_memory().unwrap_or_else(|_| Connection::open("snippet_board.db").unwrap())
+                    Connection::open_in_memory().unwrap_or_else(|_| {
+                        Connection::open("snippet_board_fallback.db").unwrap_or_else(|_| Connection::open(":memory:").expect("FATAL: Failed to initialize SQLite"))
+                    })
                 }
             };
             if let Err(e) = db::init_db(&conn) {
@@ -40,19 +42,23 @@ pub fn run() {
             let launch_dir = if args.len() > 1 && !args[1].starts_with('-') {
                 let p = std::path::Path::new(&args[1]);
                 if p.exists() {
-                    if p.is_dir() {
-                        std::fs::canonicalize(p).map(|cp| cp.to_string_lossy().replace('\\', "/")).ok()
-                    } else if let Some(parent) = p.parent() {
-                        std::fs::canonicalize(parent).map(|cp| cp.to_string_lossy().replace('\\', "/")).ok()
+                    let target_path = if p.is_dir() { p } else { p.parent().unwrap_or(p) };
+                    if let Ok(canonical) = std::fs::canonicalize(target_path) {
+                        let path_str = canonical.to_string_lossy();
+                        let clean_path = path_str.strip_prefix(r"\\?\UNC\").map(|s| format!(r"\\{}", s))
+                            .or_else(|| path_str.strip_prefix(r"\\?\").map(|s| s.to_string()))
+                            .unwrap_or_else(|| path_str.to_string());
+                        Some(clean_path.replace('\\', "/"))
                     } else {
-                        Some(args[1].clone())
+                        Some(args[1].replace('\\', "/"))
                     }
                 } else {
-                    Some(args[1].clone())
+                    Some(args[1].replace('\\', "/"))
                 }
             } else {
                 None
             };
+
 
             app.manage(AppState {
                 db: Mutex::new(conn),
