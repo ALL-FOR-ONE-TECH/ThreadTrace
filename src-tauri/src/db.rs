@@ -19,6 +19,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
 
         CREATE TABLE IF NOT EXISTS nodes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace TEXT DEFAULT 'GLOBAL',
             x REAL NOT NULL,
             y REAL NOT NULL,
             width REAL DEFAULT 340.0,
@@ -37,6 +38,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
 
         CREATE TABLE IF NOT EXISTS links (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace TEXT DEFAULT 'GLOBAL',
             from_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
             to_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
             created_at INTEGER,
@@ -45,6 +47,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_links_from ON links(from_id);
         CREATE INDEX IF NOT EXISTS idx_links_to ON links(to_id);
+        CREATE INDEX IF NOT EXISTS idx_nodes_ws ON nodes(workspace);
+        CREATE INDEX IF NOT EXISTS idx_links_ws ON links(workspace);
 
         CREATE TABLE IF NOT EXISTS repo_watch (
             path TEXT PRIMARY KEY,
@@ -54,6 +58,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     )?;
 
     // Safe column migrations for existing SQLite databases
+    let _ = conn.execute("ALTER TABLE nodes ADD COLUMN workspace TEXT DEFAULT 'GLOBAL';", []);
+    let _ = conn.execute("ALTER TABLE links ADD COLUMN workspace TEXT DEFAULT 'GLOBAL';", []);
     let _ = conn.execute("ALTER TABLE nodes ADD COLUMN width REAL DEFAULT 340.0;", []);
     let _ = conn.execute("ALTER TABLE nodes ADD COLUMN height REAL DEFAULT 260.0;", []);
     let _ = conn.execute("ALTER TABLE nodes ADD COLUMN notes TEXT;", []);
@@ -61,26 +67,28 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub fn seed_demo_data(conn: &Connection) -> Result<()> {
+
+pub fn seed_demo_data(conn: &Connection, workspace: Option<&str>) -> Result<()> {
+    let ws = workspace.unwrap_or("GLOBAL");
     let ts = now_millis();
     conn.execute(
         r#"
-        INSERT OR IGNORE INTO nodes (id, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
-        VALUES (1, 80.0, 100.0, 360.0, 280.0, 'BUG_RACE_CONDITION_JWT', 'BUG', 'read',
+        INSERT OR IGNORE INTO nodes (id, workspace, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
+        VALUES (1, ?1, 80.0, 100.0, 360.0, 280.0, 'BUG_RACE_CONDITION_JWT', 'BUG', 'read',
 '// CRITICAL: Token refresh race condition under concurrent requests
 async function refreshToken() {
   const res = await api.post(''/auth/refresh'');
   localStorage.setItem(''jwt_token'', res.data.token);
   return res.data.token;
-}', 'Multiple API calls in parallel trigger 401 unauthenticated storms when refreshing JWT in flight.', NULL, NULL, NULL, ?1, ?1)
+}', 'Multiple API calls in parallel trigger 401 unauthenticated storms when refreshing JWT in flight.', NULL, NULL, NULL, ?2, ?2)
         "#,
-        params![ts],
+        params![ws, ts],
     )?;
 
     conn.execute(
         r#"
-        INSERT OR IGNORE INTO nodes (id, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
-        VALUES (2, 520.0, 140.0, 380.0, 300.0, 'FIX_CONCURRENT_MUTEX_QUEUE', 'FIX', 'read',
+        INSERT OR IGNORE INTO nodes (id, workspace, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
+        VALUES (2, ?1, 520.0, 140.0, 380.0, 300.0, 'FIX_CONCURRENT_MUTEX_QUEUE', 'FIX', 'read',
 '// RESOLUTION: Atomic in-flight lock deduplication
 let inflightRefresh: Promise<string> | null = null;
 
@@ -90,25 +98,26 @@ export async function getValidToken(): Promise<string> {
     .then(r => r.data.token)
     .finally(() => { inflightRefresh = null; });
   return inflightRefresh;
-}', 'Single in-flight Promise deduplicates all parallel requests safely.', NULL, NULL, NULL, ?1, ?1)
+}', 'Single in-flight Promise deduplicates all parallel requests safely.', NULL, NULL, NULL, ?2, ?2)
         "#,
-        params![ts],
+        params![ws, ts],
     )?;
 
     conn.execute(
-        "INSERT OR IGNORE INTO links (from_id, to_id, created_at) VALUES (1, 2, ?1)",
-        params![ts],
+        "INSERT OR IGNORE INTO links (workspace, from_id, to_id, created_at) VALUES (?1, 1, 2, ?2)",
+        params![ws, ts],
     )?;
 
     Ok(())
 }
 
-pub fn get_board_data(conn: &Connection) -> Result<BoardData> {
+pub fn get_board_data(conn: &Connection, workspace: Option<&str>) -> Result<BoardData> {
+    let ws = workspace.unwrap_or("GLOBAL");
     let mut stmt_nodes = conn.prepare(
-        "SELECT id, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at FROM nodes ORDER BY id ASC"
+        "SELECT id, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at FROM nodes WHERE workspace = ?1 OR (workspace IS NULL AND ?1 = 'GLOBAL') ORDER BY id ASC"
     )?;
 
-    let nodes = stmt_nodes.query_map([], |row| {
+    let nodes = stmt_nodes.query_map(params![ws], |row| {
         Ok(SnippetNode {
             id: Some(row.get(0)?),
             x: row.get(1)?,
@@ -128,8 +137,10 @@ pub fn get_board_data(conn: &Connection) -> Result<BoardData> {
         })
     })?.collect::<Result<Vec<SnippetNode>>>()?;
 
-    let mut stmt_links = conn.prepare("SELECT id, from_id, to_id, created_at FROM links ORDER BY id ASC")?;
-    let links = stmt_links.query_map([], |row| {
+    let mut stmt_links = conn.prepare(
+        "SELECT id, from_id, to_id, created_at FROM links WHERE workspace = ?1 OR (workspace IS NULL AND ?1 = 'GLOBAL') ORDER BY id ASC"
+    )?;
+    let links = stmt_links.query_map(params![ws], |row| {
         Ok(SnippetLink {
             id: Some(row.get(0)?),
             from_id: row.get(1)?,
@@ -138,19 +149,35 @@ pub fn get_board_data(conn: &Connection) -> Result<BoardData> {
         })
     })?.collect::<Result<Vec<SnippetLink>>>()?;
 
-    let repo_watch: Option<RepoWatchInfo> = conn.query_row(
-        "SELECT path, last_commit FROM repo_watch LIMIT 1",
-        [],
-        |row| {
-            Ok(RepoWatchInfo {
-                path: row.get(0)?,
-                last_commit: row.get(1)?,
-                branch: None,
-                diff_summary: None,
-                is_watching: false,
-            })
-        },
-    ).ok();
+    let repo_watch: Option<RepoWatchInfo> = if ws != "GLOBAL" {
+        let last_commit: Option<String> = conn.query_row(
+            "SELECT last_commit FROM repo_watch WHERE path = ?1",
+            params![ws],
+            |row| row.get(0),
+        ).ok();
+
+        Some(RepoWatchInfo {
+            path: ws.to_string(),
+            last_commit,
+            branch: None,
+            diff_summary: None,
+            is_watching: true,
+        })
+    } else {
+        conn.query_row(
+            "SELECT path, last_commit FROM repo_watch ORDER BY ROWID DESC LIMIT 1",
+            [],
+            |row| {
+                Ok(RepoWatchInfo {
+                    path: row.get(0)?,
+                    last_commit: row.get(1)?,
+                    branch: None,
+                    diff_summary: None,
+                    is_watching: false,
+                })
+            },
+        ).ok()
+    };
 
     Ok(BoardData {
         nodes,
@@ -159,18 +186,19 @@ pub fn get_board_data(conn: &Connection) -> Result<BoardData> {
     })
 }
 
-pub fn upsert_node(conn: &Connection, node: &SnippetNode) -> Result<i64> {
+pub fn upsert_node(conn: &Connection, node: &SnippetNode, workspace: Option<&str>) -> Result<i64> {
+    let ws = workspace.unwrap_or("GLOBAL");
     let ts = now_millis();
     let width = node.width.unwrap_or(340.0);
     let height = node.height.unwrap_or(260.0);
 
     if let Some(id) = node.id.filter(|&id| id > 0) {
         conn.execute(
-
             r#"
-            INSERT INTO nodes (id, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            INSERT INTO nodes (id, workspace, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
             ON CONFLICT(id) DO UPDATE SET
+                workspace = excluded.workspace,
                 x = excluded.x,
                 y = excluded.y,
                 width = excluded.width,
@@ -187,6 +215,7 @@ pub fn upsert_node(conn: &Connection, node: &SnippetNode) -> Result<i64> {
             "#,
             params![
                 id,
+                ws,
                 node.x,
                 node.y,
                 width,
@@ -207,10 +236,11 @@ pub fn upsert_node(conn: &Connection, node: &SnippetNode) -> Result<i64> {
     } else {
         conn.execute(
             r#"
-            INSERT INTO nodes (x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            INSERT INTO nodes (workspace, x, y, width, height, title, tag, mode, code, notes, file_path, line_start, line_end, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             "#,
             params![
+                ws,
                 node.x,
                 node.y,
                 width,
@@ -237,24 +267,25 @@ pub fn delete_node(conn: &Connection, id: i64) -> Result<()> {
     Ok(())
 }
 
-pub fn add_link(conn: &Connection, from_id: i64, to_id: i64) -> Result<i64> {
+pub fn add_link(conn: &Connection, from_id: i64, to_id: i64, workspace: Option<&str>) -> Result<i64> {
     if from_id == to_id {
         return Err(rusqlite::Error::InvalidQuery);
     }
+    let ws = workspace.unwrap_or("GLOBAL");
     let ts = now_millis();
     let (min_id, max_id) = if from_id < to_id { (from_id, to_id) } else { (to_id, from_id) };
 
     conn.execute(
         r#"
-        INSERT OR IGNORE INTO links (from_id, to_id, created_at)
-        VALUES (?1, ?2, ?3)
+        INSERT OR IGNORE INTO links (workspace, from_id, to_id, created_at)
+        VALUES (?1, ?2, ?3, ?4)
         "#,
-        params![min_id, max_id, ts],
+        params![ws, min_id, max_id, ts],
     )?;
 
     let link_id: i64 = conn.query_row(
-        "SELECT id FROM links WHERE from_id = ?1 AND to_id = ?2",
-        params![min_id, max_id],
+        "SELECT id FROM links WHERE (workspace = ?1 OR (workspace IS NULL AND ?1 = 'GLOBAL')) AND from_id = ?2 AND to_id = ?3",
+        params![ws, min_id, max_id],
         |row| row.get(0),
     )?;
 
@@ -271,7 +302,7 @@ pub fn delete_link(conn: &Connection, from_id: i64, to_id: i64) -> Result<()> {
 }
 
 pub fn set_repo_watch(conn: &Connection, path: &str, last_commit: Option<&str>) -> Result<()> {
-    conn.execute("DELETE FROM repo_watch", [])?;
+    conn.execute("DELETE FROM repo_watch WHERE path = ?1", params![path])?;
     conn.execute(
         "INSERT INTO repo_watch (path, last_commit) VALUES (?1, ?2)",
         params![path, last_commit],
@@ -279,15 +310,13 @@ pub fn set_repo_watch(conn: &Connection, path: &str, last_commit: Option<&str>) 
     Ok(())
 }
 
-pub fn clear_board(conn: &Connection) -> Result<()> {
-    conn.execute_batch(
-        r#"
-        DELETE FROM links;
-        DELETE FROM nodes;
-        "#,
-    )?;
+pub fn clear_board(conn: &Connection, workspace: Option<&str>) -> Result<()> {
+    let ws = workspace.unwrap_or("GLOBAL");
+    conn.execute("DELETE FROM links WHERE workspace = ?1 OR (workspace IS NULL AND ?1 = 'GLOBAL')", params![ws])?;
+    conn.execute("DELETE FROM nodes WHERE workspace = ?1 OR (workspace IS NULL AND ?1 = 'GLOBAL')", params![ws])?;
     Ok(())
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -302,8 +331,8 @@ mod tests {
     #[test]
     fn test_init_db_and_demo_seed() {
         let conn = in_memory_db();
-        seed_demo_data(&conn).unwrap();
-        let data = get_board_data(&conn).unwrap();
+        seed_demo_data(&conn, None).unwrap();
+        let data = get_board_data(&conn, None).unwrap();
         assert_eq!(data.nodes.len(), 2);
         assert_eq!(data.links.len(), 1);
         assert_eq!(data.nodes[0].title, "BUG_RACE_CONDITION_JWT");
@@ -330,7 +359,7 @@ mod tests {
             created_at: None,
             updated_at: None,
         };
-        let id1 = upsert_node(&conn, &n1).unwrap();
+        let id1 = upsert_node(&conn, &n1, None).unwrap();
         let n2 = SnippetNode {
             id: None,
             x: 30.0,
@@ -348,15 +377,15 @@ mod tests {
             created_at: None,
             updated_at: None,
         };
-        let id2 = upsert_node(&conn, &n2).unwrap();
+        let id2 = upsert_node(&conn, &n2, None).unwrap();
 
-        add_link(&conn, id1, id2).unwrap();
-        let data = get_board_data(&conn).unwrap();
+        add_link(&conn, id1, id2, None).unwrap();
+        let data = get_board_data(&conn, None).unwrap();
         assert_eq!(data.nodes.len(), 2);
         assert_eq!(data.links.len(), 1);
 
         delete_node(&conn, id1).unwrap();
-        let data_after = get_board_data(&conn).unwrap();
+        let data_after = get_board_data(&conn, None).unwrap();
         assert_eq!(data_after.nodes.len(), 1);
         assert_eq!(data_after.links.len(), 0);
     }
@@ -398,16 +427,67 @@ mod tests {
             created_at: None,
             updated_at: None,
         };
-        let id1 = upsert_node(&conn, &n1).unwrap();
-        let id2 = upsert_node(&conn, &n2).unwrap();
+        let id1 = upsert_node(&conn, &n1, None).unwrap();
+        let id2 = upsert_node(&conn, &n2, None).unwrap();
 
-        assert!(add_link(&conn, id1, id1).is_err());
+        assert!(add_link(&conn, id1, id1, None).is_err());
 
-        let l1 = add_link(&conn, id1, id2).unwrap();
-        let l2 = add_link(&conn, id2, id1).unwrap();
+        let l1 = add_link(&conn, id1, id2, None).unwrap();
+        let l2 = add_link(&conn, id2, id1, None).unwrap();
         assert_eq!(l1, l2);
 
-        let data = get_board_data(&conn).unwrap();
+        let data = get_board_data(&conn, None).unwrap();
         assert_eq!(data.links.len(), 1);
+    }
+
+    #[test]
+    fn test_multi_workspace_isolation() {
+        let conn = in_memory_db();
+        let n_ws1 = SnippetNode {
+            id: None,
+            x: 10.0,
+            y: 10.0,
+            width: None,
+            height: None,
+            title: "CARD_WS1".into(),
+            tag: "BUG".into(),
+            mode: "read".into(),
+            code: None,
+            notes: None,
+            file_path: None,
+            line_start: None,
+            line_end: None,
+            created_at: None,
+            updated_at: None,
+        };
+        let n_ws2 = SnippetNode {
+            id: None,
+            x: 20.0,
+            y: 20.0,
+            width: None,
+            height: None,
+            title: "CARD_WS2".into(),
+            tag: "FIX".into(),
+            mode: "read".into(),
+            code: None,
+            notes: None,
+            file_path: None,
+            line_start: None,
+            line_end: None,
+            created_at: None,
+            updated_at: None,
+        };
+
+        upsert_node(&conn, &n_ws1, Some("X:/afot-os")).unwrap();
+        upsert_node(&conn, &n_ws2, Some("X:/Code-Board")).unwrap();
+
+        let board_ws1 = get_board_data(&conn, Some("X:/afot-os")).unwrap();
+        let board_ws2 = get_board_data(&conn, Some("X:/Code-Board")).unwrap();
+
+        assert_eq!(board_ws1.nodes.len(), 1);
+        assert_eq!(board_ws1.nodes[0].title, "CARD_WS1");
+
+        assert_eq!(board_ws2.nodes.len(), 1);
+        assert_eq!(board_ws2.nodes[0].title, "CARD_WS2");
     }
 }

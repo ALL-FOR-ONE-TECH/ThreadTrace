@@ -96,9 +96,10 @@ try {
 
 # Fallback to direct latest release asset if API parsing did not find URL
 if (-not $DownloadUrl) {
-    $DownloadUrl = "https://github.com/$Repo/releases/latest/download/ThreadTrace_1.0.3_x64_en-US.msi"
+    $DownloadUrl = "https://github.com/$Repo/releases/latest/download/ThreadTrace_1.0.4_x64_en-US.msi"
     $IsMsiInstaller = $true
 }
+
 
 
 

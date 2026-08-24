@@ -284,10 +284,11 @@ export const TauriBridge = {
     return `// [LOCAL READ ONLY FALLBACK]\n// File backing: ${filePath}\n// Lines: ${lineStart ?? 1} - ${lineEnd ?? 50}\nfunction previewSnippet() {\n  console.log('Viewing local file reference');\n};`;
   },
 
-  async watchRepo(path: string): Promise<RepoWatchInfo> {
+  async watchRepo(path: string): Promise<BoardData> {
     if (isTauriEnv()) {
       try {
-        return await invoke<RepoWatchInfo>('watch_repo_cmd', { repoPath: path });
+        const board = await invoke<BoardData>('watch_repo_cmd', { repoPath: path });
+        return board;
       } catch (err) {
         console.warn('Tauri watch_repo_cmd failed', err);
       }
@@ -302,8 +303,9 @@ export const TauriBridge = {
     const current = getLocalData();
     current.repo_watch = info;
     saveLocalData(current);
-    return info;
+    return current;
   },
+
 
   async exportBoard(): Promise<string> {
     if (isTauriEnv()) {

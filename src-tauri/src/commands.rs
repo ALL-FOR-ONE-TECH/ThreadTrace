@@ -13,12 +13,12 @@ pub struct AppState {
 
 #[tauri::command]
 pub fn get_board_state(state: State<'_, AppState>) -> Result<BoardData, String> {
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
     let mut data = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        db::get_board_data(&conn).map_err(|e| e.to_string())?
+        db::get_board_data(&conn, watched.as_deref()).map_err(|e| e.to_string())?
     };
 
-    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
     if let Some(ref path) = watched {
         let mut git_info = git_watcher::get_git_info(path);
         git_info.is_watching = true;
@@ -32,11 +32,11 @@ pub fn get_board_state(state: State<'_, AppState>) -> Result<BoardData, String> 
     Ok(data)
 }
 
-
 #[tauri::command]
 pub fn save_node_cmd(state: State<'_, AppState>, node: SnippetNode) -> Result<i64, String> {
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    db::upsert_node(&conn, &node).map_err(|e| e.to_string())
+    db::upsert_node(&conn, &node, watched.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -47,8 +47,9 @@ pub fn delete_node_cmd(state: State<'_, AppState>, id: i64) -> Result<(), String
 
 #[tauri::command]
 pub fn add_link_cmd(state: State<'_, AppState>, from_id: i64, to_id: i64) -> Result<i64, String> {
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    db::add_link(&conn, from_id, to_id).map_err(|e| e.to_string())
+    db::add_link(&conn, from_id, to_id, watched.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -88,11 +89,10 @@ pub fn read_dir_entries_cmd(dir_path: String) -> Vec<crate::models::DirEntryItem
     git_watcher::read_dir_entries(&dir_path)
 }
 
-
-
 #[tauri::command]
-pub fn watch_repo_cmd(state: State<'_, AppState>, repo_path: String) -> Result<RepoWatchInfo, String> {
-    let git_info = git_watcher::get_git_info(&repo_path);
+pub fn watch_repo_cmd(state: State<'_, AppState>, repo_path: String) -> Result<BoardData, String> {
+    let mut git_info = git_watcher::get_git_info(&repo_path);
+    git_info.is_watching = true;
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         let _ = db::set_repo_watch(&conn, &repo_path, git_info.last_commit.as_deref());
@@ -100,9 +100,15 @@ pub fn watch_repo_cmd(state: State<'_, AppState>, repo_path: String) -> Result<R
 
     {
         let mut watched = state.watched_repo.lock().map_err(|e| e.to_string())?;
-        *watched = Some(repo_path);
+        *watched = Some(repo_path.clone());
     }
-    Ok(git_info)
+
+    let mut data = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        db::get_board_data(&conn, Some(&repo_path)).map_err(|e| e.to_string())?
+    };
+    data.repo_watch = Some(git_info);
+    Ok(data)
 }
 
 #[tauri::command]
@@ -116,45 +122,48 @@ pub fn get_launch_dir_cmd(state: State<'_, AppState>) -> Option<String> {
     watched.clone()
 }
 
-
 #[tauri::command]
 pub fn export_board_cmd(state: State<'_, AppState>) -> Result<String, String> {
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let data = db::get_board_data(&conn).map_err(|e| e.to_string())?;
+    let data = db::get_board_data(&conn, watched.as_deref()).map_err(|e| e.to_string())?;
     serde_json::to_string_pretty(&data).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn import_board_cmd(state: State<'_, AppState>, json_content: String) -> Result<BoardData, String> {
     let data: BoardData = serde_json::from_str(&json_content).map_err(|e| e.to_string())?;
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
+    let ws = watched.as_deref().unwrap_or("GLOBAL");
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM links", []).map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM nodes", []).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM links WHERE workspace = ?1 OR (workspace IS NULL AND ?1 = 'GLOBAL')", rusqlite::params![ws]).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM nodes WHERE workspace = ?1 OR (workspace IS NULL AND ?1 = 'GLOBAL')", rusqlite::params![ws]).map_err(|e| e.to_string())?;
 
     for n in &data.nodes {
-        db::upsert_node(&tx, n).map_err(|e| e.to_string())?;
+        db::upsert_node(&tx, n, Some(ws)).map_err(|e| e.to_string())?;
     }
     for l in &data.links {
-        db::add_link(&tx, l.from_id, l.to_id).map_err(|e| e.to_string())?;
+        db::add_link(&tx, l.from_id, l.to_id, Some(ws)).map_err(|e| e.to_string())?;
     }
     tx.commit().map_err(|e| e.to_string())?;
 
-    db::get_board_data(&conn).map_err(|e| e.to_string())
+    db::get_board_data(&conn, Some(ws)).map_err(|e| e.to_string())
 }
-
 
 #[tauri::command]
 pub fn clear_board_cmd(state: State<'_, AppState>) -> Result<(), String> {
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
+    let ws = watched.as_deref().unwrap_or("GLOBAL");
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM links", []).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM nodes", []).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM repo_watch", []).map_err(|e| e.to_string())?;
-    let mut watched = state.watched_repo.lock().map_err(|e| e.to_string())?;
-    *watched = None;
+    db::clear_board(&conn, Some(ws)).map_err(|e| e.to_string())?;
+    if ws != "GLOBAL" {
+        let _ = conn.execute("DELETE FROM repo_watch WHERE path = ?1", rusqlite::params![ws]);
+    }
     Ok(())
 }
+
 
 #[tauri::command]
 pub fn get_process_telemetry_cmd() -> ProcessTelemetry {

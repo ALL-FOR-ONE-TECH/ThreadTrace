@@ -620,9 +620,14 @@ export const SnippetBoard: React.FC = () => {
   };
 
   const handleWatchRepo = useCallback(async (path: string) => {
-    const info = await TauriBridge.watchRepo(path);
-    setRepoWatch(info);
+    const data = await TauriBridge.watchRepo(path);
+    setRepoWatch(data.repo_watch || null);
+    if (data.nodes) setNodes(data.nodes);
+    if (data.links) setLinks(data.links);
+    const basename = path.split(/[\\/]/).filter(Boolean).pop()?.toUpperCase() || 'WORKSPACE';
+    setBoardTitle(data.title || `THREAD_TRACE // ${basename}`);
   }, []);
+
 
 
   const tagCounts = useMemo(() => {
