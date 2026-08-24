@@ -420,15 +420,22 @@ export const Masthead: React.FC<Props> = ({
                       <span className="info-val">{repoWatch.path}</span>
                     </div>
                     <div className="info-row">
+                      <span className="info-lbl">GIT STATUS:</span>
+                      <span className={`info-val ${repoWatch.branch ? 'amber-glow' : ''}`}>
+                        {repoWatch.branch ? 'CONNECTED' : 'LOCAL DIRECTORY (NO .GIT REPO)'}
+                      </span>
+                    </div>
+                    <div className="info-row">
                       <span className="info-lbl">BRANCH:</span>
-                      <span className="info-val amber-glow">{repoWatch.branch || 'main'}</span>
+                      <span className="info-val amber-glow">{repoWatch.branch || 'None'}</span>
                     </div>
                     <div className="info-row">
                       <span className="info-lbl">LAST COMMIT:</span>
-                      <span className="info-val">{repoWatch.last_commit || 'None'}</span>
+                      <span className="info-val">{repoWatch.last_commit || 'None (Initialize with git init)'}</span>
                     </div>
                   </div>
                 )}
+
               </div>
 
               <div className="modal-footer">
