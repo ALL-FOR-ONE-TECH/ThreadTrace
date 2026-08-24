@@ -372,9 +372,9 @@ export const SnippetCard: React.FC<Props> = ({
             value={node.code || ''}
             filePath={node.file_path}
             onChange={handleCodeChange}
-            onBlur={() => onUpdateNode({ ...node, mode: 'read' })}
           />
         ) : (
+
           <StaticCodeViewer
             code={node.code || ''}
             filePath={node.file_path}

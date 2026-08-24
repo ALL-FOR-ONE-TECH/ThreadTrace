@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -24,6 +24,10 @@ export const CodeMirrorLazyEditor: React.FC<Props> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const onBlurRef = useRef(onBlur);
+  onBlurRef.current = onBlur;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -33,13 +37,13 @@ export const CodeMirrorLazyEditor: React.FC<Props> = ({
 
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged) {
-        onChange(update.state.doc.toString());
+        onChangeRef.current(update.state.doc.toString());
       }
     });
 
     const domEventsListener = EditorView.domEventHandlers({
       blur: () => {
-        if (onBlur) onBlur();
+        if (onBlurRef.current) onBlurRef.current();
       },
     });
 
@@ -75,6 +79,19 @@ export const CodeMirrorLazyEditor: React.FC<Props> = ({
     };
   }, [filePath]);
 
+  // Synchronize external value changes (e.g. disk revert, whole file attach)
+  useEffect(() => {
+    if (viewRef.current) {
+      const currentDoc = viewRef.current.state.doc.toString();
+      if (value !== currentDoc) {
+        viewRef.current.dispatch({
+          changes: { from: 0, to: currentDoc.length, insert: value },
+        });
+      }
+    }
+  }, [value]);
+
   return <div ref={containerRef} className="codemirror-mount-wrapper" />;
 };
+
 
