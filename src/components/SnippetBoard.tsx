@@ -237,9 +237,13 @@ export const SnippetBoard: React.FC = () => {
   const handleAddSnippet = async () => {
     pushHistory(nodes, links);
     const count = nodes.length;
-    const cascadeOffset = (count % 8) * 35;
-    const x = Math.max(40, 80 + cascadeOffset - pan.x);
-    const y = Math.max(40, 60 + cascadeOffset - pan.y);
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const targetCenterX = (viewportWidth / 2 - pan.x) / zoom - 175;
+    const targetCenterY = (viewportHeight / 2 - pan.y) / zoom - 135;
+    const cascadeOffset = (count % 8) * 30;
+    const x = Math.round(targetCenterX + cascadeOffset);
+    const y = Math.round(targetCenterY + cascadeOffset);
 
     const defaultTitles = [
       'AUTH_RACE_CONDITION',
@@ -285,9 +289,14 @@ export const SnippetBoard: React.FC = () => {
   }) => {
     pushHistory(nodes, links);
     const count = nodes.length;
-    const cascadeOffset = (count % 8) * 35;
-    const x = Math.max(40, 80 + cascadeOffset - pan.x);
-    const y = Math.max(40, 60 + cascadeOffset - pan.y);
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const targetCenterX = (viewportWidth / 2 - pan.x) / zoom - 190;
+    const targetCenterY = (viewportHeight / 2 - pan.y) / zoom - 145;
+    const cascadeOffset = (count % 8) * 30;
+    const x = Math.round(targetCenterX + cascadeOffset);
+    const y = Math.round(targetCenterY + cascadeOffset);
+
 
     const newNode: SnippetNode = {
       id: 0,
@@ -488,7 +497,7 @@ export const SnippetBoard: React.FC = () => {
 
   const handleAutoRelayout = () => {
     pushHistory(nodes, links);
-    const spacingX = 360;
+    const spacingX = 370;
     const spacingY = 300;
     const cols = Math.max(2, Math.floor((window.innerWidth - 100) / spacingX));
 
@@ -497,14 +506,17 @@ export const SnippetBoard: React.FC = () => {
       const row = Math.floor(idx / cols);
       return {
         ...node,
-        x: 60 + col * spacingX,
+        x: 80 + col * spacingX,
         y: 40 + row * spacingY,
       };
     });
 
     setNodes(updated);
+    setPan({ x: 0, y: 0 });
+    setZoom(1.0);
     updated.forEach((n) => TauriBridge.saveNode(n));
   };
+
 
   const handleExport = async () => {
     const json = await TauriBridge.exportBoard();

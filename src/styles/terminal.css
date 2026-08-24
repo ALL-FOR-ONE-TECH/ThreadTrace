@@ -263,6 +263,16 @@ html, body, #root {
   display: flex;
   align-items: center;
   gap: 3px;
+  max-width: 280px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  flex-shrink: 1;
+}
+
+.tag-counts-cluster::-webkit-scrollbar {
+  display: none;
 }
 
 .tag-count-pill {
@@ -274,7 +284,10 @@ html, body, #root {
   cursor: pointer;
   background: transparent;
   transition: all 0.1s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
+
 
 .tag-count-pill:hover,
 .tag-count-pill.is-filter-active {
