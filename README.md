@@ -34,13 +34,14 @@
 
 **Install (One-Line Command):**
 ```powershell
-irm "https://raw.githubusercontent.com/ALL-FOR-ONE-TECH/ThreadTrace/main/install.ps1?v=1.0.2" | iex
+irm "https://raw.githubusercontent.com/ALL-FOR-ONE-TECH/ThreadTrace/main/install.ps1?v=1.0.3" | iex
 ```
 
 **Uninstall (One-Line Command):**
 ```powershell
-irm "https://raw.githubusercontent.com/ALL-FOR-ONE-TECH/ThreadTrace/main/uninstall.ps1?v=1.0.2" | iex
+irm "https://raw.githubusercontent.com/ALL-FOR-ONE-TECH/ThreadTrace/main/uninstall.ps1?v=1.0.3" | iex
 ```
+
 
 *Note: Uninstall cleanly deletes the executable, shortcuts, and PATH entries while safely keeping your project files and databases intact.*
 
