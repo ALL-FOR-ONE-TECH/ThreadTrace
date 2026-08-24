@@ -73,12 +73,16 @@ try {
         Write-Host "  -> Found release: $ReleaseTag" -ForegroundColor Green
     }
 
+    $IsMsiInstaller = $false
     if ($ReleaseInfo.assets) {
-        # Prefer standalone portable ThreadTrace.exe if available or setup installer
+        $MsiAsset = $ReleaseInfo.assets | Where-Object { $_.name -like "*_en-US.msi" -or $_.name -like "*.msi" } | Select-Object -First 1
         $PortableAsset = $ReleaseInfo.assets | Where-Object { $_.name -eq "ThreadTrace.exe" } | Select-Object -First 1
         $SetupAsset = $ReleaseInfo.assets | Where-Object { $_.name -like "*setup*.exe" -or $_.name -like "*Setup*.exe" } | Select-Object -First 1
 
-        if ($PortableAsset -and -not $IsSetupInstaller) {
+        if ($MsiAsset) {
+            $DownloadUrl = $MsiAsset.browser_download_url
+            $IsMsiInstaller = $true
+        } elseif ($PortableAsset) {
             $DownloadUrl = $PortableAsset.browser_download_url
             $IsSetupInstaller = $false
         } elseif ($SetupAsset) {
@@ -92,15 +96,17 @@ try {
 
 # Fallback to direct latest release asset if API parsing did not find URL
 if (-not $DownloadUrl) {
-    $DownloadUrl = "https://github.com/$Repo/releases/latest/download/ThreadTrace.exe"
+    $DownloadUrl = "https://github.com/$Repo/releases/latest/download/ThreadTrace_1.0.1_x64_en-US.msi"
+    $IsMsiInstaller = $true
 }
 
 # 3. Download binary/installer
 Write-Host "[3/5] Downloading ThreadTrace..." -ForegroundColor Cyan
 Write-Host "  Source: $DownloadUrl" -ForegroundColor Gray
 
+$Ext = if ($IsMsiInstaller) { "msi" } else { "exe" }
 $RandomSuffix = [System.IO.Path]::GetRandomFileName().Substring(0, 6)
-$TempDownload = Join-Path $env:TEMP "ThreadTrace_Setup_${RandomSuffix}.exe"
+$TempDownload = Join-Path $env:TEMP "ThreadTrace_Setup_${RandomSuffix}.${Ext}"
 try {
     Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempDownload -UseBasicParsing
     Unblock-File -Path $TempDownload -ErrorAction SilentlyContinue
@@ -109,11 +115,14 @@ try {
     exit 1
 }
 
-
 # 4. Deploy or run installer
 Write-Host "[4/5] Deploying ThreadTrace..." -ForegroundColor Cyan
 
-if ($IsSetupInstaller) {
+if ($IsMsiInstaller) {
+    Write-Host "  -> Installing via Windows Installer (MSI)..." -ForegroundColor Cyan
+    Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$TempDownload`" /passive" -Wait
+    Write-Host "  -> Installation completed successfully via Windows Installer" -ForegroundColor Green
+} elseif ($IsSetupInstaller) {
     Write-Host "  -> Launching Setup Installer..." -ForegroundColor Cyan
     try {
         Start-Process -FilePath $TempDownload -Wait -ErrorAction Stop
@@ -122,6 +131,7 @@ if ($IsSetupInstaller) {
         Start-Process -FilePath $TempDownload -Verb RunAs -Wait
     }
 } else {
+
 
     if (-not (Test-Path $InstallDir)) {
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
