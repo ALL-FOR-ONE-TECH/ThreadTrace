@@ -99,7 +99,8 @@ if (-not $DownloadUrl) {
 Write-Host "[3/5] Downloading ThreadTrace..." -ForegroundColor Cyan
 Write-Host "  Source: $DownloadUrl" -ForegroundColor Gray
 
-$TempDownload = Join-Path $env:TEMP "ThreadTrace_Package.exe"
+$RandomSuffix = [System.IO.Path]::GetRandomFileName().Substring(0, 6)
+$TempDownload = Join-Path $env:TEMP "ThreadTrace_Setup_${RandomSuffix}.exe"
 try {
     Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempDownload -UseBasicParsing
     Unblock-File -Path $TempDownload -ErrorAction SilentlyContinue
@@ -107,6 +108,7 @@ try {
     Write-Host "ERROR: Failed to download ThreadTrace: $_" -ForegroundColor Red
     exit 1
 }
+
 
 # 4. Deploy or run installer
 Write-Host "[4/5] Deploying ThreadTrace..." -ForegroundColor Cyan
