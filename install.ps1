@@ -113,8 +113,14 @@ Write-Host "[4/5] Deploying ThreadTrace..." -ForegroundColor Cyan
 
 if ($IsSetupInstaller) {
     Write-Host "  -> Launching Setup Installer..." -ForegroundColor Cyan
-    Start-Process -FilePath $TempDownload -Wait
+    try {
+        Start-Process -FilePath $TempDownload -Wait -ErrorAction Stop
+    } catch {
+        Write-Host "  -> Requesting Administrator permissions for setup..." -ForegroundColor Yellow
+        Start-Process -FilePath $TempDownload -Verb RunAs -Wait
+    }
 } else {
+
     if (-not (Test-Path $InstallDir)) {
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
     }
