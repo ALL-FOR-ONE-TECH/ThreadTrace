@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { SnippetNode, SnippetLink } from '../types/board';
 
 interface Props {
@@ -7,7 +7,11 @@ interface Props {
   linkStart: number | null;
   cursorPos: { x: number; y: number } | null;
   onDeleteLink: (fromId: number, toId: number) => void;
+  /** Current viewport in world coords; when provided, off-screen links are culled. */
+  viewport?: { x: number; y: number; w: number; h: number } | null;
 }
+
+const CULL_MARGIN = 300;
 
 export const SvgLinkLayer: React.FC<Props> = ({
   nodes,
@@ -15,9 +19,17 @@ export const SvgLinkLayer: React.FC<Props> = ({
   linkStart,
   cursorPos,
   onDeleteLink,
+  viewport,
 }) => {
+  // O(1) node lookups: replaces O(L*N) `.find()` scans per render.
+  const nodeById = useMemo(() => {
+    const m = new Map<number, SnippetNode>();
+    for (const n of nodes) m.set(n.id, n);
+    return m;
+  }, [nodes]);
+
   const getSourceAnchor = (id: number) => {
-    const node = nodes.find((n) => n.id === id);
+    const node = nodeById.get(id);
     if (!node) return null;
     const cardWidth = node.width || 340;
     return {
@@ -27,8 +39,8 @@ export const SvgLinkLayer: React.FC<Props> = ({
   };
 
   const getLinkAnchors = (fromId: number, toId: number) => {
-    const fromNode = nodes.find((n) => n.id === fromId);
-    const toNode = nodes.find((n) => n.id === toId);
+    const fromNode = nodeById.get(fromId);
+    const toNode = nodeById.get(toId);
     if (!fromNode || !toNode) return null;
 
     const fromW = fromNode.width || 340;
@@ -86,6 +98,26 @@ export const SvgLinkLayer: React.FC<Props> = ({
   const svgW = maxBoundX - minBoundX;
   const svgH = maxBoundY - minBoundY;
 
+  // Viewport culling: skip links whose both endpoints sit off-screen.
+  const visibleLinks = useMemo(() => {
+    if (!viewport) return links;
+    const vx0 = viewport.x - CULL_MARGIN;
+    const vy0 = viewport.y - CULL_MARGIN;
+    const vx1 = viewport.x + viewport.w + CULL_MARGIN;
+    const vy1 = viewport.y + viewport.h + CULL_MARGIN;
+    const inside = (x: number, y: number) => x >= vx0 && x <= vx1 && y >= vy0 && y <= vy1;
+    return links.filter((l) => {
+      const a = nodeById.get(l.from_id);
+      const b = nodeById.get(l.to_id);
+      if (!a || !b) return false;
+      const acx = a.x + (a.width || 340) / 2;
+      const acy = a.y + (a.height || 260) / 2;
+      const bcx = b.x + (b.width || 340) / 2;
+      const bcy = b.y + (b.height || 260) / 2;
+      return inside(acx, acy) || inside(bcx, bcy);
+    });
+  }, [links, nodeById, viewport]);
+
   return (
     <svg
       className="evidence-link-svg-layer"
@@ -116,7 +148,7 @@ export const SvgLinkLayer: React.FC<Props> = ({
         </linearGradient>
       </defs>
 
-      {links.map((link) => {
+      {visibleLinks.map((link) => {
         const anchors = getLinkAnchors(link.from_id, link.to_id);
         if (!anchors) return null;
         const { from, to } = anchors;

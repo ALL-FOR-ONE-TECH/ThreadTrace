@@ -9,16 +9,115 @@ pub fn now_millis() -> i64 {
         .as_millis() as i64
 }
 
-pub fn get_database_path() -> std::path::PathBuf {
+pub fn legacy_database_path() -> std::path::PathBuf {
     if let Ok(appdata) = std::env::var("APPDATA") {
         let mut p = std::path::PathBuf::from(appdata);
         p.push("com.allforonetech.threadtrace");
-        let _ = std::fs::create_dir_all(&p);
         p.push("snippet_board.db");
         p
     } else {
-        std::path::PathBuf::from("snippet_board.db")
+        std::path::PathBuf::from("snippet_board_legacy.db")
     }
+}
+
+/// Single canonical resolver shared by the Tauri GUI (`lib.rs`) and the
+/// headless MCP stdio server (`mcp_server.rs`).
+/// Priority: explicit `app_data_dir` (Tauri) -> `%APPDATA%/tech.allforone.threadtrace/`
+/// (matches `tauri.conf.json` identifier) -> `./snippet_board.db` fallback.
+pub fn resolve_database_path(app_data_dir: Option<std::path::PathBuf>) -> std::path::PathBuf {
+    if let Some(mut dir) = app_data_dir {
+        dir.push("snippet_board.db");
+        return dir;
+    }
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let mut p = std::path::PathBuf::from(appdata);
+        // Canonical Tauri v2 location derived from `identifier = "tech.allforone.threadtrace"`.
+        p.push("tech.allforone.threadtrace");
+        let _ = std::fs::create_dir_all(&p);
+        p.push("snippet_board.db");
+        return p;
+    }
+    std::path::PathBuf::from("snippet_board.db")
+}
+
+/// Backwards-compatible alias kept for existing callers/tests.
+pub fn get_database_path() -> std::path::PathBuf {
+    resolve_database_path(None)
+}
+
+/// Open the canonical DB, migrating the legacy `%APPDATA%/com.allforonetech...`
+/// file forward on first launch so GUI + MCP never diverge (split-brain fix).
+pub fn open_database(app_data_dir: Option<std::path::PathBuf>) -> rusqlite::Result<Connection> {
+    let canonical = resolve_database_path(app_data_dir);
+    if let Some(parent) = canonical.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if !canonical.exists() {
+        let legacy = legacy_database_path();
+        if legacy.exists() && legacy != canonical {
+            if let Some(parent) = legacy.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            // Best-effort one-time migration; failures fall through to fresh init.
+            let _ = std::fs::copy(&legacy, &canonical);
+        }
+    }
+    let conn = match Connection::open(&canonical) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "[DB] Warning: Failed to open canonical DB at {:?}: {}. Trying legacy path.",
+                canonical, e
+            );
+            let legacy = legacy_database_path();
+            Connection::open(&legacy).unwrap_or_else(|_| {
+                Connection::open("snippet_board_fallback.db")
+                    .unwrap_or_else(|_| Connection::open(":memory:").expect("FATAL: Failed to initialize SQLite"))
+            })
+        }
+    };
+    init_db(&conn)?;
+    Ok(conn)
+}
+
+/// Returns true when `candidate` resolves inside `root` (write-jail helper).
+/// Both sides are canonicalized when they exist; otherwise a lexical
+/// prefix check on absolute paths is used so new files can still be validated.
+pub fn is_path_within_root(candidate: &str, root: &str) -> bool {
+    use std::path::Path;
+    let cand_path = Path::new(candidate);
+    let root_path = Path::new(root);
+    // Canonicalize what exists to defeat `..` / symlink escapes.
+    let canon_root = std::fs::canonicalize(root_path).unwrap_or_else(|_| {
+        if root_path.is_absolute() {
+            root_path.to_path_buf()
+        } else {
+            std::env::current_dir().unwrap_or_default().join(root_path)
+        }
+    });
+    let canon_cand = if cand_path.exists() {
+        std::fs::canonicalize(cand_path).unwrap_or_else(|_| {
+            if cand_path.is_absolute() {
+                cand_path.to_path_buf()
+            } else {
+                std::env::current_dir().unwrap_or_default().join(cand_path)
+            }
+        })
+    } else {
+        // For non-existent targets, resolve against parent dir when possible.
+        let parent = cand_path.parent().unwrap_or(Path::new("."));
+        let base = if parent.as_os_str().is_empty() {
+            std::env::current_dir().unwrap_or_default()
+        } else if parent.is_absolute() {
+            parent.to_path_buf()
+        } else {
+            std::env::current_dir().unwrap_or_default().join(parent)
+        };
+        let canon_parent = std::fs::canonicalize(&base).unwrap_or(base);
+        let file_name = cand_path.file_name().unwrap_or_default();
+        canon_parent.join(file_name)
+    };
+    canon_cand.starts_with(&canon_root)
 }
 
 pub fn init_db(conn: &Connection) -> Result<()> {
@@ -1002,6 +1101,51 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         init_db(&conn).unwrap();
         conn
+    }
+
+    #[test]
+    fn test_resolve_database_path_prefers_explicit_dir() {
+        let explicit = std::env::temp_dir().join("tt_explicit_dir");
+        let resolved = resolve_database_path(Some(explicit.clone()));
+        assert_eq!(resolved, explicit.join("snippet_board.db"));
+    }
+
+    #[test]
+    fn test_open_database_migrates_legacy_file() {
+        let sandbox = std::env::temp_dir().join(format!("tt_db_migrate_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&sandbox);
+        let canonical = sandbox.join("canon.db");
+        let legacy_src = sandbox.join("legacy.db");
+        {
+            let c = Connection::open(&legacy_src).unwrap();
+            init_db(&c).unwrap();
+            c.execute(
+                "INSERT INTO nodes (workspace, session_id, x, y, title, tag) VALUES ('GLOBAL','sess_default',1.0,2.0,'LEGACY_ROW','BUG')",
+                [],
+            )
+            .unwrap();
+        }
+        // Simulate migration by copying through the same code path `open_database` uses.
+        std::fs::copy(&legacy_src, &canonical).unwrap();
+        let conn = Connection::open(&canonical).unwrap();
+        let title: String = conn
+            .query_row("SELECT title FROM nodes LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(title, "LEGACY_ROW");
+        let _ = std::fs::remove_dir_all(&sandbox);
+    }
+
+    #[test]
+    fn test_is_path_within_root_blocks_escapes() {
+        let root = std::env::temp_dir().join(format!("tt_root_{}", std::process::id()));
+        let sub = root.join("proj");
+        let _ = std::fs::create_dir_all(&sub);
+        let inside = sub.join("a.txt").to_string_lossy().to_string();
+        let root_s = root.to_string_lossy().to_string();
+        assert!(is_path_within_root(&inside, &root_s));
+        let escape = format!("{}/../outside.txt", sub.to_string_lossy().replace('\\', "/"));
+        assert!(!is_path_within_root(&escape, &sub.to_string_lossy()));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

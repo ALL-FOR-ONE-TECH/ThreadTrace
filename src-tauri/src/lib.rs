@@ -17,27 +17,20 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             let app_handle = app.handle();
-            let db_path = match app_handle.path().app_data_dir() {
-                Ok(mut p) => {
-                    let _ = std::fs::create_dir_all(&p);
-                    p.push("snippet_board.db");
-                    p
-                }
-                Err(_) => db::get_database_path(),
-            };
+            let app_data_dir = app_handle.path().app_data_dir().ok();
+            if let Some(ref dir) = app_data_dir {
+                let _ = std::fs::create_dir_all(dir);
+            }
 
-            let conn = match Connection::open(&db_path) {
+            let conn = match db::open_database(app_data_dir) {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!("Warning: Failed to open DB at {:?}: {}. Falling back to in-memory DB.", db_path, e);
+                    eprintln!("Warning: Failed to open canonical DB: {}. Falling back to in-memory DB.", e);
                     Connection::open_in_memory().unwrap_or_else(|_| {
                         Connection::open("snippet_board_fallback.db").unwrap_or_else(|_| Connection::open(":memory:").expect("FATAL: Failed to initialize SQLite"))
                     })
                 }
             };
-            if let Err(e) = db::init_db(&conn) {
-                eprintln!("Warning: Failed to initialize DB tables: {}", e);
-            }
 
             let args: Vec<String> = std::env::args().collect();
             let launch_dir = if args.len() > 1 && !args[1].starts_with('-') && args[1] != "mcp" {

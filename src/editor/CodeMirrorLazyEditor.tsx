@@ -5,6 +5,9 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { javascript } from '@codemirror/lang-javascript';
 import { rust } from '@codemirror/lang-rust';
 import { json } from '@codemirror/lang-json';
+import { python } from '@codemirror/lang-python';
+import { html } from '@codemirror/lang-html';
+import { css } from '@codemirror/lang-css';
 import { amberTerminalTheme } from './theme';
 
 interface Props {
@@ -32,8 +35,15 @@ export const CodeMirrorLazyEditor: React.FC<Props> = ({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const ext = filePath?.split('.').pop() || 'ts';
-    const langExtension = ext === 'rs' ? rust() : ext === 'json' ? json() : javascript({ typescript: true });
+    const rawExt = (filePath?.split('.').pop() || 'ts').toLowerCase();
+    const langExtension =
+      rawExt === 'rs' ? rust()
+      : rawExt === 'json' ? json()
+      : rawExt === 'py' ? python()
+      : rawExt === 'html' || rawExt === 'htm' || rawExt === 'xml' ? html()
+      : rawExt === 'css' || rawExt === 'scss' || rawExt === 'less' ? css()
+      : rawExt === 'js' || rawExt === 'jsx' ? javascript({ jsx: true })
+      : javascript({ typescript: true });
 
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged) {

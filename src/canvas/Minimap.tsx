@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { SnippetNode, SnippetLink, CustomTag, DEFAULT_TAGS } from '../types/board';
 import { Radio, Minimize2, Maximize2 } from 'lucide-react';
 
@@ -20,8 +20,26 @@ export const Minimap: React.FC<Props> = ({
   customTags = DEFAULT_TAGS,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const [viewportSize, setViewportSize] = useState(() => ({
+    w: typeof window !== 'undefined' ? window.innerWidth : 1366,
+    h: typeof window !== 'undefined' ? window.innerHeight : 850,
+  }));
   const mapW = 180;
   const mapH = 120;
+
+  // Track window resizes so radar bounds + viewport rect stay live.
+  useEffect(() => {
+    const onResize = () => setViewportSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // O(1) node lookups for link lines (was O(L*N) `.find()` per render).
+  const nodeById = useMemo(() => {
+    const m = new Map<number, SnippetNode>();
+    for (const n of nodes) m.set(n.id, n);
+    return m;
+  }, [nodes]);
 
   const tagColorMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -32,8 +50,8 @@ export const Minimap: React.FC<Props> = ({
   }, [customTags]);
 
   const bounds = useMemo(() => {
-    const viewW = window.innerWidth;
-    const viewH = window.innerHeight;
+    const viewW = viewportSize.w;
+    const viewH = viewportSize.h;
     const viewLeft = -pan.x / zoom;
     const viewTop = -pan.y / zoom;
     const viewRight = viewLeft + viewW / zoom;
@@ -68,15 +86,15 @@ export const Minimap: React.FC<Props> = ({
       scaleX: mapW / spanX,
       scaleY: mapH / spanY,
     };
-  }, [nodes, pan, zoom]);
+  }, [nodes, pan, zoom, viewportSize]);
 
   const toMapX = (worldX: number) => (worldX - bounds.originX) * bounds.scaleX;
   const toMapY = (worldY: number) => (worldY - bounds.originY) * bounds.scaleY;
 
   const vpLeft = toMapX(-pan.x / zoom);
   const vpTop = toMapY(-pan.y / zoom);
-  const vpW = Math.max(8, (window.innerWidth / zoom) * bounds.scaleX);
-  const vpH = Math.max(8, (window.innerHeight / zoom) * bounds.scaleY);
+  const vpW = Math.max(8, (viewportSize.w / zoom) * bounds.scaleX);
+  const vpH = Math.max(8, (viewportSize.h / zoom) * bounds.scaleY);
 
   const handleMinimapClick = (e: React.MouseEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -86,8 +104,8 @@ export const Minimap: React.FC<Props> = ({
     const targetWorldX = bounds.originX + clickMapX / bounds.scaleX;
     const targetWorldY = bounds.originY + clickMapY / bounds.scaleY;
 
-    const newPanX = -(targetWorldX * zoom - window.innerWidth / 2);
-    const newPanY = -(targetWorldY * zoom - window.innerHeight / 2);
+    const newPanX = -(targetWorldX * zoom - viewportSize.w / 2);
+    const newPanY = -(targetWorldY * zoom - viewportSize.h / 2);
 
     onNavigate(newPanX, newPanY);
   };
@@ -128,8 +146,8 @@ export const Minimap: React.FC<Props> = ({
         onClick={handleMinimapClick}
       >
         {links.map((l) => {
-          const n1 = nodes.find((n) => n.id === l.from_id);
-          const n2 = nodes.find((n) => n.id === l.to_id);
+          const n1 = nodeById.get(l.from_id);
+          const n2 = nodeById.get(l.to_id);
           if (!n1 || !n2) return null;
           return (
             <line
@@ -176,4 +194,3 @@ export const Minimap: React.FC<Props> = ({
     </aside>
   );
 };
-

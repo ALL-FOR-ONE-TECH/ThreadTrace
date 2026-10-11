@@ -144,7 +144,34 @@ pub fn read_file_slice(file_path: &str, line_start: Option<i32>, line_end: Optio
     }
 }
 
-pub fn write_file_slice(file_path: &str, line_start: i32, line_end: i32, new_content: &str) -> Result<(), String> {
+pub fn write_file_slice(
+    file_path: &str,
+    line_start: i32,
+    line_end: i32,
+    new_content: &str,
+    allowed_root: Option<&str>,
+) -> Result<(), String> {
+    // ── Write-jail: restrict all mutations to the watched workspace root ──
+    // Blocks `..` escapes, absolute-path jumps, and symlink hops outside root.
+    // Reads stay open (evidence gathering); writes are jailed (evidence applying).
+    if let Some(root) = allowed_root {
+        if !crate::db::is_path_within_root(file_path, root) {
+            return Err(format!(
+                "Write blocked: '{}' is outside the watched workspace '{}'. Attach the file's repo first.",
+                file_path, root
+            ));
+        }
+    }
+    // Hard size cap: refuse to rewrite files > 2MB to avoid accidental mass corruption.
+    const MAX_WRITABLE_BYTES: u64 = 2 * 1024 * 1024;
+    if let Ok(meta) = std::fs::metadata(file_path) {
+        if meta.len() > MAX_WRITABLE_BYTES {
+            return Err(format!(
+                "Write blocked: file is {:.1}MB (limit 2.0MB). Slice it into smaller clues instead.",
+                meta.len() as f64 / (1024.0 * 1024.0)
+            ));
+        }
+    }
     let path = Path::new(file_path);
     if !path.exists() || !path.is_file() {
         return Err(format!("File not found: {}", file_path));
@@ -396,5 +423,62 @@ mod tests {
         let res = read_file_slice("non_existent_file_path_12345.rs", Some(1), Some(10));
         assert!(!res.exists);
         assert!(res.error.is_some());
+    }
+
+    #[test]
+    fn test_write_file_slice_inside_jail_ok() {
+        let dir = std::env::temp_dir().join(format!("tt_jail_ok_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("note.txt");
+        std::fs::write(&file, "a\nb\nc\n").unwrap();
+        let root = dir.to_string_lossy().to_string();
+        let fp = file.to_string_lossy().to_string();
+        let res = write_file_slice(&fp, 2, 2, "B2", Some(&root));
+        assert!(res.is_ok());
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("B2"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_write_file_slice_outside_jail_blocked() {
+        let ok_dir = std::env::temp_dir().join(format!("tt_jail_root_{}", std::process::id()));
+        let evil_dir = std::env::temp_dir().join(format!("tt_jail_evil_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&ok_dir);
+        let _ = std::fs::create_dir_all(&evil_dir);
+        let evil = evil_dir.join("victim.txt");
+        std::fs::write(&evil, "keep\nme\n").unwrap();
+        let err = write_file_slice(
+            &evil.to_string_lossy(),
+            1,
+            1,
+            "pwned",
+            Some(&ok_dir.to_string_lossy()),
+        )
+        .unwrap_err();
+        assert!(err.contains("outside the watched workspace"));
+        assert_eq!(std::fs::read_to_string(&evil).unwrap(), "keep\nme\n");
+        let _ = std::fs::remove_dir_all(&ok_dir);
+        let _ = std::fs::remove_dir_all(&evil_dir);
+    }
+
+    #[test]
+    fn test_write_file_slice_dotdot_escape_blocked() {
+        let dir = std::env::temp_dir().join(format!("tt_jail_dd_{}", std::process::id()));
+        let sub = dir.join("sub");
+        let _ = std::fs::create_dir_all(&sub);
+        let outside = dir.join("secret.txt");
+        std::fs::write(&outside, "top\nsecret\n").unwrap();
+        let evil = format!("{}/../secret.txt", sub.to_string_lossy().replace('\\', "/"));
+        let err = write_file_slice(
+            &evil,
+            1,
+            1,
+            "pwned",
+            Some(&sub.to_string_lossy()),
+        )
+        .unwrap_err();
+        assert!(err.contains("outside the watched workspace"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

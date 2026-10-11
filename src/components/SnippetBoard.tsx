@@ -12,6 +12,8 @@ import {
 } from '../types/board';
 import { TauriBridge, isTauriEnv } from '../services/tauriBridge';
 import { computeAutoTopology } from '../canvas/AutoTopologyPlotter';
+import { useBoardHistory } from '../hooks/useBoardHistory';
+import { useBoardPersistence, normalizeImportedBoard, BOARD_SCHEMA_VERSION } from '../hooks/useBoardPersistence';
 import { Masthead } from './Masthead';
 import { SnippetCard } from './SnippetCard';
 import { SvgLinkLayer } from '../canvas/SvgLinkLayer';
@@ -51,8 +53,6 @@ export const SnippetBoard: React.FC = () => {
     links: SnippetLink[];
   } | null>(null);
 
-  const [historyStack, setHistoryStack] = useState<{ nodes: SnippetNode[]; links: SnippetLink[] }[]>([]);
-  const [redoStack, setRedoStack] = useState<{ nodes: SnippetNode[]; links: SnippetLink[] }[]>([]);
   const [repoWatch, setRepoWatch] = useState<RepoWatchInfo | null>(null);
   const [isTauri, setIsTauri] = useState(false);
   const [zoom, setZoom] = useState<number>(1.0);
@@ -61,34 +61,45 @@ export const SnippetBoard: React.FC = () => {
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const boardRef = useRef<HTMLDivElement>(null);
+  // Bounded undo/redo with keystroke coalescing (fixes per-keystroke history flood).
+  const {
+    pushHistory: pushHistoryEntry,
+    undo: popUndo,
+    redo: popRedo,
+    syncHistoryRefs,
+  } = useBoardHistory();
+  // Versioned JSON export/import + debounced Tauri persistence.
+  const { persistNodeDebounced, persistAllNow, exportVersionedJson } = useBoardPersistence();
   const rafRef = useRef<number | null>(null);
   const nodesRef = useRef<SnippetNode[]>(nodes);
-  nodesRef.current = nodes;
   const linksRef = useRef<SnippetLink[]>(links);
-  linksRef.current = links;
 
-  const pushHistory = useCallback((curNodes: SnippetNode[], curLinks: SnippetLink[]) => {
-    setHistoryStack((prev) => [...prev.slice(-25), { nodes: curNodes, links: curLinks }]);
-    setRedoStack([]);
-  }, []);
+  // Keep hook mirrors fresh for undo/redo base snapshots.
+  useEffect(() => {
+    syncHistoryRefs(nodes, links);
+  }, [nodes, links, syncHistoryRefs]);
+
+  // pushHistory(label) wrapper: snapshots current refs, keeps old call shape.
+  const pushHistory = useCallback(
+    (curNodes: SnippetNode[], curLinks: SnippetLink[], label: string = 'EDIT') => {
+      pushHistoryEntry(curNodes, curLinks, label);
+    },
+    [pushHistoryEntry]
+  );
 
   const handleUndo = useCallback(() => {
-    if (historyStack.length === 0) return;
-    const previous = historyStack[historyStack.length - 1];
-    setRedoStack((prev) => [...prev, { nodes: nodesRef.current, links: linksRef.current }]);
-    setHistoryStack((prev) => prev.slice(0, -1));
+    const previous = popUndo();
+    if (!previous) return;
     setNodes(previous.nodes);
     setLinks(previous.links);
-  }, [historyStack]);
+  }, [popUndo]);
 
   const handleRedo = useCallback(() => {
-    if (redoStack.length === 0) return;
-    const next = redoStack[redoStack.length - 1];
-    setHistoryStack((prev) => [...prev, { nodes: nodesRef.current, links: linksRef.current }]);
-    setRedoStack((prev) => prev.slice(0, -1));
+    const next = popRedo();
+    if (!next) return;
     setNodes(next.nodes);
     setLinks(next.links);
-  }, [redoStack]);
+  }, [popRedo]);
 
   useEffect(() => {
     setIsTauri(isTauriEnv());
@@ -245,7 +256,7 @@ export const SnippetBoard: React.FC = () => {
   };
 
   const handleAddSnippet = async () => {
-    pushHistory(nodes, links);
+    pushHistory(nodes, links, 'ADD');
     const count = nodes.length;
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
@@ -297,7 +308,7 @@ export const SnippetBoard: React.FC = () => {
     lineStart: number;
     lineEnd: number;
   }) => {
-    pushHistory(nodes, links);
+    pushHistory(nodes, links, 'ADD');
     const count = nodes.length;
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
@@ -335,14 +346,15 @@ export const SnippetBoard: React.FC = () => {
   const handleUpdateNode = useCallback(
     (updated: SnippetNode) => {
       setNodes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
-      TauriBridge.saveNode(updated);
+      // Debounced persistence: collapses keystroke bursts into one save.
+      persistNodeDebounced(updated);
     },
-    []
+    [persistNodeDebounced]
   );
 
   const handleDeleteNode = useCallback(
     async (id: number) => {
-      pushHistory(nodesRef.current, linksRef.current);
+      pushHistory(nodesRef.current, linksRef.current, 'DELETE');
       await TauriBridge.deleteNode(id);
       setNodes((prev) => prev.filter((n) => n.id !== id));
       setLinks((prev) => prev.filter((l) => l.from_id !== id && l.to_id !== id));
@@ -360,7 +372,7 @@ export const SnippetBoard: React.FC = () => {
       } else {
         const fromId = linkStart;
         const toId = id;
-        pushHistory(nodesRef.current, linksRef.current);
+        pushHistory(nodesRef.current, linksRef.current, 'LINK');
         const linkId = await TauriBridge.addLink(fromId, toId);
         if (linkId > 0) {
           setLinks((prev) => [...prev, { id: linkId, from_id: fromId, to_id: toId }]);
@@ -373,7 +385,7 @@ export const SnippetBoard: React.FC = () => {
 
   const handleDeleteLink = useCallback(
     async (fromId: number, toId: number) => {
-      pushHistory(nodesRef.current, linksRef.current);
+      pushHistory(nodesRef.current, linksRef.current, 'LINK');
       await TauriBridge.deleteLinkBetween(fromId, toId);
       setLinks((prev) =>
         prev.filter(
@@ -389,7 +401,7 @@ export const SnippetBoard: React.FC = () => {
     const targetNode = nodes.find((n) => n.id === id);
     if (!targetNode || !boardRef.current) return;
 
-    pushHistory(nodesRef.current, linksRef.current);
+    pushHistory(nodesRef.current, linksRef.current, 'MOVE');
 
     const boardRect = boardRef.current.getBoundingClientRect();
     const cursorX = (e.clientX - boardRect.left - pan.x) / zoom;
@@ -408,7 +420,7 @@ export const SnippetBoard: React.FC = () => {
     const targetNode = nodes.find((n) => n.id === id);
     if (!targetNode) return;
 
-    pushHistory(nodesRef.current, linksRef.current);
+    pushHistory(nodesRef.current, linksRef.current, 'RESIZE');
 
     setResizing({
       id,
@@ -506,7 +518,7 @@ export const SnippetBoard: React.FC = () => {
 
 
   const handleAutoRelayout = () => {
-    pushHistory(nodes, links);
+    pushHistory(nodes, links, 'LAYOUT');
     const spacingX = 370;
     const spacingY = 300;
     const cols = Math.max(2, Math.floor((window.innerWidth - 100) / spacingX));
@@ -528,7 +540,7 @@ export const SnippetBoard: React.FC = () => {
   };
 
   const handleAutoTopology = useCallback(() => {
-    pushHistory(nodes, links);
+    pushHistory(nodes, links, 'LAYOUT');
     const positioned = computeAutoTopology(nodes, links, {
       startX: 120,
       startY: 100,
@@ -542,7 +554,7 @@ export const SnippetBoard: React.FC = () => {
   }, [nodes, links, pushHistory]);
 
   const handleSwitchSession = useCallback(async (sessionId: string) => {
-    pushHistory(nodesRef.current, linksRef.current);
+    pushHistory(nodesRef.current, linksRef.current, 'SESSION');
     const switched = await TauriBridge.switchSession(sessionId);
     setNodes(switched.nodes || []);
     setLinks(switched.links || []);
@@ -555,7 +567,7 @@ export const SnippetBoard: React.FC = () => {
   }, [sessions, pushHistory]);
 
   const handleCreateSession = useCallback(async (name: string) => {
-    pushHistory(nodesRef.current, linksRef.current);
+    pushHistory(nodesRef.current, linksRef.current, 'SESSION');
     const newSess = await TauriBridge.createSession(name);
     setSessions((prev) => [newSess, ...prev]);
     setCurrentSessionId(newSess.id);
@@ -566,7 +578,15 @@ export const SnippetBoard: React.FC = () => {
   }, [pushHistory]);
 
   const handleExport = async () => {
-    const json = await TauriBridge.exportBoard();
+    // Flush the debounce queue so the download matches the canvas.
+    await persistAllNow(nodes);
+    const json = exportVersionedJson({
+      title: boardTitle,
+      custom_tags: customTags,
+      nodes,
+      links,
+      repo_watch: repoWatch,
+    });
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -612,9 +632,20 @@ export const SnippetBoard: React.FC = () => {
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
-        pushHistory(nodes, links);
+        pushHistory(nodes, links, 'IMPORT');
         const text = await file.text();
-        const imported = await TauriBridge.importBoard(text);
+        let parsed: unknown = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          window.alert('Import failed: file is not valid JSON.');
+          return;
+        }
+        const { data: normalized, warnings } = normalizeImportedBoard(parsed);
+        if (warnings.length > 0) {
+          console.warn(`Import schema v${BOARD_SCHEMA_VERSION}:`, warnings);
+        }
+        const imported = await TauriBridge.importBoard(JSON.stringify(normalized));
         setNodes(imported.nodes || []);
         setLinks(imported.links || []);
         if (imported.title) setBoardTitle(imported.title);
@@ -629,7 +660,8 @@ export const SnippetBoard: React.FC = () => {
       const confirmed = window.confirm('Clear current investigation board? Unsaved layout changes will be lost.');
       if (!confirmed) return;
     }
-    pushHistory(nodes, links);
+    await persistAllNow(nodesRef.current);
+    pushHistory(nodes, links, 'CLEAR');
     const blank = await TauriBridge.clearBoard();
     setNodes(blank.nodes);
     setLinks(blank.links);
@@ -638,7 +670,7 @@ export const SnippetBoard: React.FC = () => {
   };
 
   const handleToggleDemo = async () => {
-    pushHistory(nodes, links);
+    pushHistory(nodes, links, 'DEMO');
     if (isDemoActive) {
       if (savedUserBoard) {
         setNodes(savedUserBoard.nodes);
@@ -832,6 +864,12 @@ export const SnippetBoard: React.FC = () => {
             linkStart={linkStart}
             cursorPos={cursorPos}
             onDeleteLink={handleDeleteLink}
+            viewport={boardRef.current ? {
+              x: -pan.x / zoom,
+              y: -pan.y / zoom,
+              w: boardRef.current.clientWidth / zoom,
+              h: boardRef.current.clientHeight / zoom,
+            } : null}
           />
 
           {nodes.length === 0 && (

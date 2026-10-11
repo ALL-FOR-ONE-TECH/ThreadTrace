@@ -70,8 +70,31 @@ pub fn read_file_snippet_cmd(file_path: String, line_start: Option<i32>, line_en
 }
 
 #[tauri::command]
-pub fn write_file_snippet_cmd(file_path: String, line_start: i32, line_end: i32, new_content: String) -> Result<(), String> {
-    git_watcher::write_file_slice(&file_path, line_start, line_end, &new_content)
+pub fn write_file_snippet_cmd(
+    state: State<'_, AppState>,
+    file_path: String,
+    line_start: i32,
+    line_end: i32,
+    new_content: String,
+) -> Result<(), String> {
+    // Jail writes to the currently-watched repo root. When no repo is
+    // attached, fall back to the file's parent dir so scratch cards still work
+    // but absolute jumps (e.g. `C:/Windows/...`) are still validated.
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
+    if let Some(ref root) = watched {
+        git_watcher::write_file_slice(&file_path, line_start, line_end, &new_content, Some(root))
+    } else {
+        let parent = std::path::Path::new(&file_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string());
+        git_watcher::write_file_slice(
+            &file_path,
+            line_start,
+            line_end,
+            &new_content,
+            parent.as_deref(),
+        )
+    }
 }
 
 #[tauri::command]

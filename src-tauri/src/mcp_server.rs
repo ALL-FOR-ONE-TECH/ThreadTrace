@@ -27,16 +27,9 @@ pub struct JsonRpcResponse {
 }
 
 fn open_mcp_db() -> rusqlite::Result<Connection> {
-    let db_path = db::get_database_path();
-    let conn = match Connection::open(&db_path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("[MCP] Warning: Failed to open DB at {:?}: {}. Using fallback snippet_board.db", db_path, e);
-            Connection::open("snippet_board.db").unwrap_or_else(|_| Connection::open(":memory:").expect("Failed to open SQLite"))
-        }
-    };
-    db::init_db(&conn)?;
-    Ok(conn)
+    // Unified canonical path: GUI (lib.rs) and MCP share `db::open_database`,
+    // including one-time legacy migration. Never diverge to a second location.
+    db::open_database(None)
 }
 
 pub fn parse_stack_frames(trace_text: &str) -> Vec<(String, i32)> {
