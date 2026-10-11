@@ -16,9 +16,12 @@ export const DEFAULT_TAGS: CustomTag[] = [
 ];
 
 export type NodeSyncStatus = 'SYNCED' | 'MODIFIED' | 'DETACHED';
+export type VerificationStatus = 'CRASH' | 'INVESTIGATING' | 'VERIFIED';
+export type LinkRelationType = 'CAUSES' | 'CALLS' | 'FIXES' | string;
 
 export interface SnippetNode {
   id: number;
+  session_id?: string | null;
   x: number;
   y: number;
   width?: number;
@@ -31,6 +34,9 @@ export interface SnippetNode {
   file_path: string | null;
   line_start: number | null;
   line_end: number | null;
+  checklist?: string | null;
+  verification_status?: VerificationStatus | string;
+  confidence?: number;
   syncStatus?: NodeSyncStatus;
   created_at?: number;
   updated_at?: number;
@@ -38,9 +44,33 @@ export interface SnippetNode {
 
 export interface SnippetLink {
   id: number;
+  session_id?: string | null;
   from_id: number;
   to_id: number;
+  relation_type?: LinkRelationType;
   created_at?: number;
+}
+
+export interface Session {
+  id: string;
+  name: string;
+  workspace: string;
+  category?: string;
+  status?: string;
+  summary?: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface SessionActivity {
+  id?: number;
+  session_id: string;
+  actor: string;
+  actor_id?: string;
+  activity_type: string;
+  title: string;
+  payload: string;
+  timestamp: number;
 }
 
 export interface RepoWatchInfo {
@@ -76,6 +106,8 @@ export interface BoardData {
   nodes: SnippetNode[];
   links: SnippetLink[];
   repo_watch?: RepoWatchInfo | null;
+  session_id?: string | null;
+  sessions?: Session[];
 }
 
 export interface DraggingState {
@@ -98,4 +130,3 @@ export interface DirEntryItem {
   is_dir: boolean;
   size_bytes: number;
 }
-

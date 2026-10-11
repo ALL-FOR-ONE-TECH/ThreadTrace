@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SnippetNode, TagType, CustomTag, DEFAULT_TAGS } from '../types/board';
+import { SnippetNode, TagType, CustomTag, DEFAULT_TAGS, VerificationStatus } from '../types/board';
 import { StaticCodeViewer } from '../editor/StaticCodeViewer';
 import { CodeMirrorLazyEditor } from '../editor/CodeMirrorLazyEditor';
 import { TauriBridge } from '../services/tauriBridge';
@@ -12,9 +12,14 @@ import {
   Save,
   RotateCcw,
   AlertTriangle,
-
   ChevronDown,
   ChevronRight,
+  CheckSquare,
+  Square,
+  Activity,
+  CheckCircle2,
+  AlertOctagon,
+  Percent,
 } from 'lucide-react';
 
 interface Props {
@@ -53,12 +58,12 @@ export const SnippetCard: React.FC<Props> = ({
   );
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [isEditingNotesRaw, setIsEditingNotesRaw] = useState(false);
   const [isApplyingSource, setIsApplyingSource] = useState(false);
-
   const [applySuccessMsg, setApplySuccessMsg] = useState<string | null>(null);
 
-  const cardWidth = node.width || 340;
-  const cardHeight = node.height || 260;
+  const cardWidth = node.width || 360;
+  const cardHeight = node.height || 280;
 
   const currentTagObj = customTags.find((t) => t.id === node.tag) || {
     id: node.tag,
@@ -66,9 +71,23 @@ export const SnippetCard: React.FC<Props> = ({
     color: '#ffb000',
   };
 
+  const verificationStatus: VerificationStatus =
+    (node.verification_status as VerificationStatus) || 'INVESTIGATING';
+
   const handleModeToggle = () => {
     const nextMode = node.mode === 'read' ? 'write' : 'read';
     onUpdateNode({ ...node, mode: nextMode });
+  };
+
+  const handleCycleVerification = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const nextStatus: VerificationStatus =
+      verificationStatus === 'CRASH'
+        ? 'INVESTIGATING'
+        : verificationStatus === 'INVESTIGATING'
+        ? 'VERIFIED'
+        : 'CRASH';
+    onUpdateNode({ ...node, verification_status: nextStatus });
   };
 
   const handleTagChange = (newTag: TagType) => {
@@ -92,7 +111,38 @@ export const SnippetCard: React.FC<Props> = ({
   };
 
   const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onUpdateNode({ ...node, notes: e.target.value });
+    const val = e.target.value;
+    if (node.checklist !== undefined && node.checklist !== null) {
+      onUpdateNode({ ...node, checklist: val });
+    } else {
+      onUpdateNode({ ...node, notes: val });
+    }
+  };
+
+  // Interactive Markdown Checklist toggling
+  const fullNotesText = node.notes || '';
+  const hasMarkdownChecklist = /- \[[ xX]\]/.test(fullNotesText) || (node.checklist && /- \[[ xX]\]/.test(node.checklist));
+
+  const toggleChecklistItem = (lineIdx: number) => {
+    const targetSource = node.checklist || node.notes || '';
+    const lines = targetSource.split('\n');
+    if (lineIdx < 0 || lineIdx >= lines.length) return;
+
+    const line = lines[lineIdx];
+    if (line.includes('- [ ]')) {
+      lines[lineIdx] = line.replace('- [ ]', '- [x]');
+    } else if (line.includes('- [x]')) {
+      lines[lineIdx] = line.replace('- [x]', '- [ ]');
+    } else if (line.includes('- [X]')) {
+      lines[lineIdx] = line.replace('- [X]', '- [ ]');
+    }
+
+    const updated = lines.join('\n');
+    if (node.checklist) {
+      onUpdateNode({ ...node, checklist: updated });
+    } else {
+      onUpdateNode({ ...node, notes: updated });
+    }
   };
 
   const handleAttachFile = async (e: React.FormEvent) => {
@@ -179,9 +229,45 @@ export const SnippetCard: React.FC<Props> = ({
   const customBorderColor = currentTagObj.color;
   const isDraft = node.syncStatus === 'MODIFIED';
 
+  // Verification glow styling
+  const getGlowStyles = () => {
+    if (isArmed) {
+      return {
+        borderColor: '#ff4d4f',
+        boxShadow: '0 0 20px rgba(255, 77, 79, 0.75)',
+      };
+    }
+    if (isHighlighted) {
+      return {
+        borderColor: '#ffb000',
+        boxShadow: '0 0 24px rgba(255, 176, 0, 0.85)',
+      };
+    }
+    switch (verificationStatus) {
+      case 'CRASH':
+        return {
+          borderColor: '#ff3b30',
+          boxShadow: '0 0 18px rgba(255, 59, 48, 0.65), 0 8px 30px rgba(0,0,0,0.85)',
+        };
+      case 'VERIFIED':
+        return {
+          borderColor: '#00e676',
+          boxShadow: '0 0 18px rgba(0, 230, 118, 0.65), 0 8px 30px rgba(0,0,0,0.85)',
+        };
+      case 'INVESTIGATING':
+      default:
+        return {
+          borderColor: customBorderColor,
+          boxShadow: `0 8px 28px rgba(0,0,0,0.8), 0 0 12px ${customBorderColor}30`,
+        };
+    }
+  };
+
+  const glow = getGlowStyles();
+
   return (
     <article
-      className={`snippet-card tag-${node.tag.toLowerCase()} ${
+      className={`snippet-card tag-${node.tag.toLowerCase()} status-${verificationStatus.toLowerCase()} ${
         node.mode === 'write' ? 'is-active-editor' : 'is-idle-reader'
       } ${isArmed ? 'is-armed-link' : ''} ${isDragging ? 'is-dragging' : ''} ${
         isDimmed ? 'is-search-dimmed' : ''
@@ -190,13 +276,9 @@ export const SnippetCard: React.FC<Props> = ({
         transform: `translate(${node.x}px, ${node.y}px)`,
         width: `${cardWidth}px`,
         minHeight: `${cardHeight}px`,
-        borderColor: isArmed ? '#ff4d4f' : isHighlighted ? '#ffb000' : customBorderColor,
+        borderColor: glow.borderColor,
+        boxShadow: glow.boxShadow,
         opacity: isDimmed ? 0.22 : 1,
-        boxShadow: isArmed
-          ? '0 0 15px rgba(255, 77, 79, 0.6)'
-          : isHighlighted
-          ? '0 0 20px rgba(255, 176, 0, 0.8)'
-          : `0 8px 28px rgba(0,0,0,0.8), 0 0 10px ${customBorderColor}25`,
       }}
     >
       {/* Draggable Card Header */}
@@ -206,6 +288,21 @@ export const SnippetCard: React.FC<Props> = ({
       >
         <div className="card-header-left">
           <GripVertical size={13} className="drag-grip-icon" />
+
+          {/* Verification Status Pill Badge */}
+          <button
+            type="button"
+            className={`verification-status-pill status-${verificationStatus.toLowerCase()}`}
+            onClick={handleCycleVerification}
+            title={`Verification Status: ${verificationStatus} (Click to cycle CRASH / INVESTIGATING / VERIFIED)`}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {verificationStatus === 'CRASH' && <AlertOctagon size={11} className="status-icon" />}
+            {verificationStatus === 'INVESTIGATING' && <Activity size={11} className="status-icon" />}
+            {verificationStatus === 'VERIFIED' && <CheckCircle2 size={11} className="status-icon" />}
+            <span className="status-text">{verificationStatus}</span>
+          </button>
+
           <input
             type="text"
             className="card-title-input"
@@ -218,6 +315,13 @@ export const SnippetCard: React.FC<Props> = ({
         </div>
 
         <div className="card-header-actions" onMouseDown={(e) => e.stopPropagation()}>
+          {node.confidence !== undefined && (
+            <span className="confidence-pill" title="AI / Static Analysis Confidence Score">
+              <Percent size={9} />
+              <span>{Math.round(node.confidence * 100)}%</span>
+            </span>
+          )}
+
           <button
             type="button"
             className={`mode-badge-btn ${node.mode}`}
@@ -343,7 +447,7 @@ export const SnippetCard: React.FC<Props> = ({
             type="button"
             className={`notes-toggle-btn ${showNotes ? 'is-active' : ''}`}
             onClick={() => setShowNotes((v) => !v)}
-            title="Toggle Investigation Notes / Explanation"
+            title="Toggle Investigation Notes & Markdown Checklist"
           >
             <FileText size={11} />
             <span>NOTES</span>
@@ -352,16 +456,68 @@ export const SnippetCard: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Investigation Notes / Hypothesis Section */}
+      {/* Investigation Notes & Interactive Markdown Checklist */}
       {showNotes && (
         <div className="card-notes-drawer">
-          <textarea
-            className="terminal-input card-notes-input"
-            rows={2}
-            value={node.notes || ''}
-            onChange={handleNotesChange}
-            placeholder="Add investigation notes or bug hypothesis..."
-          />
+          <div className="notes-drawer-toolbar">
+            <span className="notes-mode-title">
+              {hasMarkdownChecklist && !isEditingNotesRaw ? 'INTERACTIVE CHECKLIST' : 'INVESTIGATION HYPOTHESIS'}
+            </span>
+            <button
+              type="button"
+              className="notes-toggle-raw-btn"
+              onClick={() => setIsEditingNotesRaw((v) => !v)}
+              title="Toggle between raw editor and interactive checklist"
+            >
+              {isEditingNotesRaw ? 'VIEW CHECKLIST' : 'EDIT MARKDOWN'}
+            </button>
+          </div>
+
+          {hasMarkdownChecklist && !isEditingNotesRaw ? (
+            <div className="interactive-checklist-box">
+              {(node.checklist || node.notes || '').split('\n').map((line, idx) => {
+                const isChecked = /- \[[xX]\]/.test(line);
+                const isUnchecked = /- \[ \]/.test(line);
+                if (isChecked || isUnchecked) {
+                  const label = line.replace(/^\s*- \[[ xX]\]\s*/, '');
+                  const leadingSpaces = line.match(/^(\s*)/)?.[1]?.length || 0;
+                  const indentLevel = Math.min(Math.floor(leadingSpaces / 2), 4);
+                  return (
+                    <div
+                      key={idx}
+                      className={`checklist-item-row ${isChecked ? 'is-item-checked' : ''}`}
+                      style={{ paddingLeft: `${4 + indentLevel * 14}px` }}
+                      onClick={() => toggleChecklistItem(idx)}
+                    >
+                      {isChecked ? (
+                        <CheckSquare size={13} className="check-box-icon checked" />
+                      ) : (
+                        <Square size={13} className="check-box-icon unchecked" />
+                      )}
+                      <span className="checklist-text">{label}</span>
+                    </div>
+                  );
+                } else if (line.trim().length > 0) {
+                  const leadingSpaces = line.match(/^(\s*)/)?.[1]?.length || 0;
+                  const indentLevel = Math.min(Math.floor(leadingSpaces / 2), 4);
+                  return (
+                    <p key={idx} className="checklist-plain-line" style={{ paddingLeft: `${4 + indentLevel * 14}px` }}>
+                      {line.trim()}
+                    </p>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          ) : (
+            <textarea
+              className="terminal-input card-notes-input"
+              rows={3}
+              value={node.checklist ?? node.notes ?? ''}
+              onChange={handleNotesChange}
+              placeholder="Add investigation notes or checklist (- [ ] item)..."
+            />
+          )}
         </div>
       )}
 
@@ -374,7 +530,6 @@ export const SnippetCard: React.FC<Props> = ({
             onChange={handleCodeChange}
           />
         ) : (
-
           <StaticCodeViewer
             code={node.code || ''}
             filePath={node.file_path}

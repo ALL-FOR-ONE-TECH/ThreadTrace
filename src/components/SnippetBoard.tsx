@@ -8,8 +8,10 @@ import {
   RepoWatchInfo,
   CustomTag,
   DEFAULT_TAGS,
+  Session,
 } from '../types/board';
 import { TauriBridge, isTauriEnv } from '../services/tauriBridge';
+import { computeAutoTopology } from '../canvas/AutoTopologyPlotter';
 import { Masthead } from './Masthead';
 import { SnippetCard } from './SnippetCard';
 import { SvgLinkLayer } from '../canvas/SvgLinkLayer';
@@ -29,6 +31,8 @@ export const SnippetBoard: React.FC = () => {
   const [nodes, setNodes] = useState<SnippetNode[]>([]);
   const [links, setLinks] = useState<SnippetLink[]>([]);
   const [customTags, setCustomTags] = useState<CustomTag[]>(DEFAULT_TAGS);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [linkStart, setLinkStart] = useState<number | null>(null);
   const [dragging, setDragging] = useState<DraggingState | null>(null);
   const [resizing, setResizing] = useState<ResizingState | null>(null);
@@ -94,6 +98,12 @@ export const SnippetBoard: React.FC = () => {
       if (data.title) setBoardTitle(data.title);
       if (data.custom_tags && data.custom_tags.length > 0) setCustomTags(data.custom_tags);
       if (data.repo_watch) setRepoWatch(data.repo_watch);
+      if (data.session_id) setCurrentSessionId(data.session_id);
+      if (data.sessions && data.sessions.length > 0) {
+        setSessions(data.sessions);
+      } else {
+        TauriBridge.listSessions().then((sList) => setSessions(sList));
+      }
     });
 
     TauriBridge.getLaunchDir().then((launchDir) => {
@@ -517,6 +527,43 @@ export const SnippetBoard: React.FC = () => {
     updated.forEach((n) => TauriBridge.saveNode(n));
   };
 
+  const handleAutoTopology = useCallback(() => {
+    pushHistory(nodes, links);
+    const positioned = computeAutoTopology(nodes, links, {
+      startX: 120,
+      startY: 100,
+      horizontalSpacing: 460,
+      verticalGap: 45,
+    });
+    setNodes(positioned);
+    setPan({ x: 0, y: 0 });
+    setZoom(1.0);
+    positioned.forEach((n) => TauriBridge.saveNode(n));
+  }, [nodes, links, pushHistory]);
+
+  const handleSwitchSession = useCallback(async (sessionId: string) => {
+    pushHistory(nodesRef.current, linksRef.current);
+    const switched = await TauriBridge.switchSession(sessionId);
+    setNodes(switched.nodes || []);
+    setLinks(switched.links || []);
+    setCurrentSessionId(sessionId);
+    const matched = sessions.find((s) => s.id === sessionId);
+    if (matched) {
+      setBoardTitle(matched.name);
+    }
+    setIsDemoActive(false);
+  }, [sessions, pushHistory]);
+
+  const handleCreateSession = useCallback(async (name: string) => {
+    pushHistory(nodesRef.current, linksRef.current);
+    const newSess = await TauriBridge.createSession(name);
+    setSessions((prev) => [newSess, ...prev]);
+    setCurrentSessionId(newSess.id);
+    setBoardTitle(newSess.name);
+    setNodes([]);
+    setLinks([]);
+    setIsDemoActive(false);
+  }, [pushHistory]);
 
   const handleExport = async () => {
     const json = await TauriBridge.exportBoard();
@@ -699,6 +746,7 @@ export const SnippetBoard: React.FC = () => {
         onNewBoard={handleNewBoard}
         onLoadDemo={handleToggleDemo}
         onAutoRelayout={handleAutoRelayout}
+        onAutoTopology={handleAutoTopology}
         onExport={handleExport}
         onExportDossier={handleExportDossier}
         onExportHtmlDossier={handleExportHtmlDossier}
@@ -710,6 +758,10 @@ export const SnippetBoard: React.FC = () => {
         repoWatch={repoWatch}
         onWatchRepo={handleWatchRepo}
         isTauri={isTauri}
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onSwitchSession={handleSwitchSession}
+        onCreateSession={handleCreateSession}
       />
 
       {/* Project File Tree Explorer Drawer */}
@@ -874,6 +926,7 @@ export const SnippetBoard: React.FC = () => {
           onLoadDemo={handleToggleDemo}
           onClearBoard={handleNewBoard}
           onAutoRelayout={handleAutoRelayout}
+          onAutoTopology={handleAutoTopology}
           onExportHtml={handleExportHtmlDossier}
           onExportMarkdown={handleExportDossier}
           onExportJson={handleExport}

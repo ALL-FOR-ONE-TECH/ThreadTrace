@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnippetNode {
     pub id: Option<i64>,
+    pub session_id: Option<String>,
     pub x: f64,
     pub y: f64,
     pub width: Option<f64>,
@@ -15,17 +16,45 @@ pub struct SnippetNode {
     pub file_path: Option<String>,
     pub line_start: Option<i32>,
     pub line_end: Option<i32>,
+    pub checklist: Option<String>,
+    pub verification_status: Option<String>,
+    pub confidence: Option<f64>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnippetLink {
     pub id: Option<i64>,
+    pub session_id: Option<String>,
     pub from_id: i64,
     pub to_id: i64,
+    pub relation_type: Option<String>,
     pub created_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Session {
+    pub id: String,
+    pub name: String,
+    pub workspace: String,
+    pub category: Option<String>,
+    pub status: Option<String>,
+    pub summary: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionActivity {
+    pub id: Option<i64>,
+    pub session_id: String,
+    pub actor: String,
+    pub actor_id: Option<String>,
+    pub activity_type: String,
+    pub title: String,
+    pub payload: String,
+    pub timestamp: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +71,8 @@ pub struct BoardData {
     pub nodes: Vec<SnippetNode>,
     pub links: Vec<SnippetLink>,
     pub repo_watch: Option<RepoWatchInfo>,
+    pub session_id: Option<String>,
+    pub sessions: Option<Vec<Session>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,5 +102,3 @@ pub struct DirEntryItem {
     pub is_dir: bool,
     pub size_bytes: u64,
 }
-
-

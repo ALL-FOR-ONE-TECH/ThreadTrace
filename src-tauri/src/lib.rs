@@ -3,6 +3,7 @@ pub mod db;
 pub mod git_watcher;
 pub mod commands;
 pub mod process_metrics;
+pub mod mcp_server;
 
 use std::sync::Mutex;
 use rusqlite::Connection;
@@ -22,7 +23,7 @@ pub fn run() {
                     p.push("snippet_board.db");
                     p
                 }
-                Err(_) => std::path::PathBuf::from("snippet_board.db"),
+                Err(_) => db::get_database_path(),
             };
 
             let conn = match Connection::open(&db_path) {
@@ -39,7 +40,7 @@ pub fn run() {
             }
 
             let args: Vec<String> = std::env::args().collect();
-            let launch_dir = if args.len() > 1 && !args[1].starts_with('-') {
+            let launch_dir = if args.len() > 1 && !args[1].starts_with('-') && args[1] != "mcp" {
                 let p = std::path::Path::new(&args[1]);
                 if p.exists() {
                     let target_path = if p.is_dir() { p } else { p.parent().unwrap_or(p) };
@@ -72,6 +73,7 @@ pub fn run() {
             commands::save_node_cmd,
             commands::delete_node_cmd,
             commands::add_link_cmd,
+            commands::add_link_with_relation_cmd,
             commands::delete_link_cmd,
             commands::delete_link_between_cmd,
             commands::read_file_snippet_cmd,
@@ -86,12 +88,12 @@ pub fn run() {
             commands::list_repo_files_cmd,
             commands::list_system_drives_cmd,
             commands::read_dir_entries_cmd,
+            commands::list_sessions_cmd,
+            commands::switch_session_cmd,
+            commands::create_session_cmd,
+            commands::get_session_activity_cmd,
+            commands::search_past_investigations_cmd,
         ])
-
-
-
         .run(tauri::generate_context!())
         .expect("Error while running Tauri application");
 }
-
-

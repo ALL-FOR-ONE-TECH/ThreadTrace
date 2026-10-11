@@ -12,6 +12,7 @@ import {
   HelpCircle,
   FolderSearch,
   Check,
+  Workflow,
 } from 'lucide-react';
 import { SnippetNode, TagType } from '../types/board';
 
@@ -22,6 +23,7 @@ interface Props {
   onLoadDemo: () => void;
   onClearBoard: () => void;
   onAutoRelayout: () => void;
+  onAutoTopology?: () => void;
   onExportHtml: () => void;
   onExportMarkdown: () => void;
   onExportJson: () => void;
@@ -47,6 +49,7 @@ export const CommandPaletteModal: React.FC<Props> = ({
   onLoadDemo,
   onClearBoard,
   onAutoRelayout,
+  onAutoTopology,
   onExportHtml,
   onExportMarkdown,
   onExportJson,
@@ -106,6 +109,20 @@ export const CommandPaletteModal: React.FC<Props> = ({
           onClose();
         },
       },
+      ...(onAutoTopology
+        ? [
+            {
+              id: 'auto-topology',
+              title: 'Auto-Topology: Causal DAG Strata Layout',
+              category: 'ACTION' as const,
+              icon: <Workflow size={14} />,
+              run: () => {
+                onAutoTopology();
+                onClose();
+              },
+            },
+          ]
+        : []),
       {
         id: 'export-html',
         title: 'Export Interactive HTML Dossier',

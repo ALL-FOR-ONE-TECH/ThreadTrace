@@ -1,11 +1,22 @@
 import { invoke } from '@tauri-apps/api/core';
-import { BoardData, SnippetNode, RepoWatchInfo, CustomTag, DEFAULT_TAGS, ProcessTelemetry } from '../types/board';
+import {
+  BoardData,
+  SnippetNode,
+  RepoWatchInfo,
+  CustomTag,
+  DEFAULT_TAGS,
+  ProcessTelemetry,
+  Session,
+  SessionActivity,
+} from '../types/board';
 
 export function isTauriEnv(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
 const STORAGE_KEY = 'THREAD_TRACE_DATA_V3';
+const SESSIONS_STORAGE_KEY = 'THREAD_TRACE_SESSIONS_V3';
+const ACTIVE_SESSION_KEY = 'THREAD_TRACE_ACTIVE_SESSION_V3';
 
 export const INITIAL_BLANK_DATA: BoardData = {
   title: 'THREAD_TRACE // NEW_INVESTIGATION',
@@ -27,44 +38,56 @@ export const DEMO_INVESTIGATION_DATA: BoardData = {
       tag: 'BUG',
       mode: 'read',
       code: '// RACE CONDITION: Concurrent requests trigger multiple refresh cycles\nasync function handleExpiredSession() {\n  const refreshResponse = await api.post("/auth/refresh");\n  localStorage.setItem("auth_jwt", refreshResponse.token);\n  return refreshResponse.token;\n}',
+      notes: 'Multiple API calls in parallel trigger unauthenticated storms when refreshing JWT in flight.',
       file_path: 'src/services/auth.ts',
       line_start: 42,
       line_end: 48,
+      checklist: '- [x] Reproduce 401 unauthenticated storm under load\n- [ ] Profile pending refresh requests\n- [ ] Mutex queue in-flight call',
+      verification_status: 'CRASH',
+      confidence: 0.96,
       created_at: Date.now() - 3600000,
       updated_at: Date.now() - 3600000,
     },
     {
       id: 2,
-      x: 460,
-      y: 180,
+      x: 520,
+      y: 120,
       title: 'FIX_INFLIGHT_REFRESH_MUTEX',
       tag: 'FIX',
       mode: 'read',
       code: '// RESOLUTION: Singleton in-flight promise lock\nlet inflightRefreshPromise: Promise<string> | null = null;\n\nexport async function getSessionToken(): Promise<string> {\n  if (inflightRefreshPromise) return inflightRefreshPromise;\n  inflightRefreshPromise = api.post("/auth/refresh")\n    .then(res => res.data.token)\n    .finally(() => { inflightRefreshPromise = null; });\n  return inflightRefreshPromise;\n}',
+      notes: 'Single in-flight Promise deduplicates all parallel requests safely.',
       file_path: 'src/services/auth.ts',
       line_start: 50,
       line_end: 62,
+      checklist: '- [x] Singleton in-flight promise lock wrap\n- [x] Run parallel load tests (100 reqs)\n- [x] Zero unhandled token rejections',
+      verification_status: 'VERIFIED',
+      confidence: 1.0,
       created_at: Date.now() - 1800000,
       updated_at: Date.now() - 1800000,
     },
     {
       id: 3,
-      x: 860,
-      y: 110,
+      x: 980,
+      y: 120,
       title: 'EVIDENCE_PROD_LOG_BURST',
       tag: 'EVIDENCE',
       mode: 'read',
       code: '[2026-08-23 12:30:01] ERROR 401: Token expired mid-transaction\n[2026-08-23 12:30:01] POST /auth/refresh -> 200 (req_id: #8921)\n[2026-08-23 12:30:01] POST /auth/refresh -> 409 (req_id: #8922 - Token revoked)\n[2026-08-23 12:30:02] Client forced logout on socket disconnect',
+      notes: 'Production audit log confirms colliding token revocations.',
       file_path: 'logs/prod-audit.log',
       line_start: 1,
       line_end: 4,
+      checklist: '- [x] Ingest log timeline\n- [ ] Correlate req_id sequence',
+      verification_status: 'INVESTIGATING',
+      confidence: 0.88,
       created_at: Date.now() - 900000,
       updated_at: Date.now() - 900000,
     }
   ],
   links: [
-    { id: 1, from_id: 1, to_id: 2, created_at: Date.now() - 1800000 },
-    { id: 2, from_id: 1, to_id: 3, created_at: Date.now() - 900000 }
+    { id: 1, from_id: 1, to_id: 2, relation_type: 'FIXES', created_at: Date.now() - 1800000 },
+    { id: 2, from_id: 1, to_id: 3, relation_type: 'CAUSES', created_at: Date.now() - 900000 }
   ],
   repo_watch: {
     path: '.',
@@ -178,12 +201,17 @@ export const TauriBridge = {
     saveLocalData(current);
   },
 
-  async addLink(fromId: number, toId: number): Promise<number> {
+  async addLink(fromId: number, toId: number, relationType: string = 'CAUSES'): Promise<number> {
     if (isTauriEnv()) {
       try {
-        return await invoke<number>('add_link_cmd', { fromId, toId });
+        return await invoke<number>('add_link_with_relation_cmd', { fromId, toId, relationType });
       } catch (err) {
-        console.warn('Tauri add_link_cmd failed', err);
+        console.warn('Tauri add_link_with_relation_cmd failed, fallback to add_link_cmd', err);
+        try {
+          return await invoke<number>('add_link_cmd', { fromId, toId });
+        } catch (e2) {
+          console.warn('Tauri add_link_cmd also failed', e2);
+        }
       }
     }
     const current = getLocalData();
@@ -192,11 +220,17 @@ export const TauriBridge = {
     );
     if (!existing) {
       const newId = Date.now();
-      current.links.push({ id: newId, from_id: fromId, to_id: toId });
+      current.links.push({ id: newId, from_id: fromId, to_id: toId, relation_type: relationType });
       saveLocalData(current);
       return newId;
     }
+    existing.relation_type = relationType;
+    saveLocalData(current);
     return existing.id;
+  },
+
+  async addLinkWithRelation(fromId: number, toId: number, relationType: string = 'CAUSES'): Promise<number> {
+    return this.addLink(fromId, toId, relationType);
   },
 
   async deleteLinkBetween(fromId: number, toId: number): Promise<void> {
@@ -423,6 +457,83 @@ export const TauriBridge = {
       }
     }
     return null;
+  },
+
+  async listSessions(): Promise<Session[]> {
+    if (isTauriEnv()) {
+      try {
+        return await invoke<Session[]>('list_sessions_cmd');
+      } catch (err) {
+        console.warn('Tauri list_sessions_cmd failed', err);
+      }
+    }
+    try {
+      const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    const defaultSess: Session = {
+      id: 'sess_jwt_race',
+      name: 'JWT_AUTH_RACE',
+      workspace: 'GLOBAL',
+      category: 'BUG_INVESTIGATION',
+      status: 'RESOLVED',
+      summary: 'Single in-flight Promise deduplicates all parallel requests safely.',
+      created_at: Date.now() - 3600000,
+      updated_at: Date.now(),
+    };
+    return [defaultSess];
+  },
+
+  async switchSession(sessionId: string): Promise<BoardData> {
+    if (isTauriEnv()) {
+      try {
+        const board = await invoke<BoardData>('switch_session_cmd', { sessionId });
+        saveLocalData(board);
+        return board;
+      } catch (err) {
+        console.warn('Tauri switch_session_cmd failed', err);
+      }
+    }
+    localStorage.setItem(ACTIVE_SESSION_KEY, sessionId);
+    return getLocalData();
+  },
+
+  async createSession(name: string, category: string = 'BUG_INVESTIGATION'): Promise<Session> {
+    if (isTauriEnv()) {
+      try {
+        return await invoke<Session>('create_session_cmd', { name, category });
+      } catch (err) {
+        console.warn('Tauri create_session_cmd failed', err);
+      }
+    }
+    const cleanId = `sess_${name.toLowerCase().replace(/\s+/g, '_')}_${Date.now() % 10000}`;
+    const newSession: Session = {
+      id: cleanId,
+      name,
+      workspace: 'GLOBAL',
+      category,
+      status: 'IN_PROGRESS',
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    };
+    try {
+      const sessions = await this.listSessions();
+      sessions.unshift(newSession);
+      localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+      localStorage.setItem(ACTIVE_SESSION_KEY, cleanId);
+    } catch {}
+    return newSession;
+  },
+
+  async getSessionActivity(sessionId: string, limit: number = 50): Promise<SessionActivity[]> {
+    if (isTauriEnv()) {
+      try {
+        return await invoke<SessionActivity[]>('get_session_activity_cmd', { sessionId, limit });
+      } catch (err) {
+        console.warn('Tauri get_session_activity_cmd failed', err);
+      }
+    }
+    return [];
   },
 };
 

@@ -170,3 +170,113 @@ pub fn get_process_telemetry_cmd() -> ProcessTelemetry {
     process_metrics::get_process_telemetry()
 }
 
+#[tauri::command]
+pub fn add_link_with_relation_cmd(
+    state: State<'_, AppState>,
+    from_id: i64,
+    to_id: i64,
+    relation_type: Option<String>,
+) -> Result<i64, String> {
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::add_link_with_relation(
+        &conn,
+        from_id,
+        to_id,
+        relation_type.as_deref(),
+        watched.as_deref(),
+        None,
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_sessions_cmd(state: State<'_, AppState>) -> Result<Vec<crate::models::Session>, String> {
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::list_sessions(&conn, watched.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn switch_session_cmd(state: State<'_, AppState>, session_id: String) -> Result<BoardData, String> {
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::set_active_session_id(&conn, watched.as_deref(), &session_id).map_err(|e| e.to_string())?;
+    let _ = db::log_activity(
+        &conn,
+        &session_id,
+        "HUMAN",
+        None,
+        "SWITCH_SESSION",
+        "Switched active session",
+        &format!(r#"{{"session_id": "{}"}}"#, session_id),
+    );
+    let mut data = db::get_board_data_for_session(&conn, watched.as_deref(), Some(&session_id))
+        .map_err(|e| e.to_string())?;
+    if let Some(ref path) = watched {
+        let mut git_info = git_watcher::get_git_info(path);
+        git_info.is_watching = true;
+        data.repo_watch = Some(git_info);
+    }
+    Ok(data)
+}
+
+#[tauri::command]
+pub fn create_session_cmd(
+    state: State<'_, AppState>,
+    name: String,
+    category: Option<String>,
+) -> Result<crate::models::Session, String> {
+    let watched = state.watched_repo.lock().map_err(|e| e.to_string())?.clone();
+    let ws = watched.as_deref().unwrap_or("GLOBAL");
+    let ts = db::now_millis();
+    let clean_id = format!(
+        "sess_{}_{}",
+        name.to_lowercase().replace(' ', "_").chars().filter(|c| c.is_alphanumeric() || *c == '_').collect::<String>(),
+        ts % 10000
+    );
+    let session = crate::models::Session {
+        id: clean_id.clone(),
+        name: name.clone(),
+        workspace: ws.to_string(),
+        category: category.or_else(|| Some("BUG_INVESTIGATION".to_string())),
+        status: Some("IN_PROGRESS".to_string()),
+        summary: None,
+        created_at: ts,
+        updated_at: ts,
+    };
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::upsert_session(&conn, &session).map_err(|e| e.to_string())?;
+    db::set_active_session_id(&conn, Some(ws), &clean_id).map_err(|e| e.to_string())?;
+    let _ = db::log_activity(
+        &conn,
+        &clean_id,
+        "HUMAN",
+        None,
+        "CREATE_SESSION",
+        &format!("Created session {}", name),
+        &format!(r#"{{"name": "{}"}}"#, name),
+    );
+    Ok(session)
+}
+
+#[tauri::command]
+pub fn get_session_activity_cmd(
+    state: State<'_, AppState>,
+    session_id: String,
+    limit: Option<usize>,
+) -> Result<Vec<crate::models::SessionActivity>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::get_session_activity(&conn, &session_id, limit).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn search_past_investigations_cmd(
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<Vec<SnippetNode>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::search_past_investigations(&conn, &query).map_err(|e| e.to_string())
+}
+
+

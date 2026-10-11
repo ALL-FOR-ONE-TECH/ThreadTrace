@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { TagType, RepoWatchInfo, CustomTag, DEFAULT_TAGS } from '../types/board';
+import { TagType, RepoWatchInfo, CustomTag, DEFAULT_TAGS, Session } from '../types/board';
 import appLogo from '../assets/logo.png';
 import {
   Plus,
@@ -19,8 +19,9 @@ import {
   ChevronDown,
   X,
   FilePlus,
+  Workflow,
+  FolderKanban,
 } from 'lucide-react';
-
 
 interface Props {
   title?: string;
@@ -38,18 +39,22 @@ interface Props {
   isDemoActive?: boolean;
   onOpenExplorer?: () => void;
   onAutoRelayout: () => void;
+  onAutoTopology?: () => void;
   onExport: () => void;
   onExportDossier?: () => void;
   onExportHtmlDossier?: () => void;
   onOpenCommandPalette?: () => void;
   onImport: () => void;
-
   onOpenShortcuts: () => void;
   onOpenTagManager?: () => void;
   customTags?: CustomTag[];
   repoWatch: RepoWatchInfo | null;
   onWatchRepo: (path: string) => void;
   isTauri: boolean;
+  sessions?: Session[];
+  currentSessionId?: string | null;
+  onSwitchSession?: (sessionId: string) => void;
+  onCreateSession?: (name: string) => void;
 }
 
 export const Masthead: React.FC<Props> = ({
@@ -68,25 +73,34 @@ export const Masthead: React.FC<Props> = ({
   isDemoActive = false,
   onOpenExplorer,
   onAutoRelayout,
+  onAutoTopology,
   onExport,
   onExportDossier,
   onExportHtmlDossier,
   onOpenCommandPalette,
   onImport,
-
   onOpenShortcuts,
   onOpenTagManager,
   customTags = DEFAULT_TAGS,
   repoWatch,
   onWatchRepo,
   isTauri,
+  sessions = [],
+  currentSessionId,
+  onSwitchSession,
+  onCreateSession,
 }) => {
   const [showRepoModal, setShowRepoModal] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showSessionMenu, setShowSessionMenu] = useState(false);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [newSessionNameInput, setNewSessionNameInput] = useState('');
   const [repoPathInput, setRepoPathInput] = useState(repoWatch?.path || '');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(title);
+
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const sessionMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setTitleInput(title);
@@ -96,6 +110,10 @@ export const Masthead: React.FC<Props> = ({
     const handleClickOutside = (e: MouseEvent) => {
       if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
         setShowExportMenu(false);
+      }
+      if (sessionMenuRef.current && !sessionMenuRef.current.contains(e.target as Node)) {
+        setShowSessionMenu(false);
+        setIsCreatingSession(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -117,15 +135,122 @@ export const Masthead: React.FC<Props> = ({
     if (onTitleChange) onTitleChange(clean);
   };
 
+  const handleCreateNewSessionSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newSessionNameInput.trim().toUpperCase();
+    if (clean && onCreateSession) {
+      onCreateSession(clean);
+      setNewSessionNameInput('');
+      setIsCreatingSession(false);
+      setShowSessionMenu(false);
+    }
+  };
+
+  const currentSession = sessions.find((s) => s.id === currentSessionId);
+
   return (
     <header className="board-masthead">
       <div className="masthead-main-bar">
-        {/* Left: Brand Logo, Single-Line Title & Status */}
+        {/* Left: Brand Logo, Title / Session Selector & Status */}
         <div className="masthead-brand-section">
           <div className="app-logo-wrapper" title="ThreadTrace: Spatial Investigation Canvas">
             <img src={appLogo} alt="ThreadTrace Logo" className="app-logo-img" />
           </div>
 
+          {/* Session Switcher Dropdown */}
+          <div className="session-switcher-container" ref={sessionMenuRef}>
+            <button
+              type="button"
+              className="session-selector-btn"
+              onClick={() => setShowSessionMenu((v) => !v)}
+              title="Switch active investigation board session"
+            >
+              <FolderKanban size={13} className="session-folder-icon" />
+              <span className="session-title-label">
+                {currentSession?.name || title}
+              </span>
+              <ChevronDown size={11} className="session-caret-icon" />
+            </button>
+
+            {showSessionMenu && (
+              <div className="session-popover-menu">
+                <div className="session-popover-header">
+                  <span className="popover-title">[ACTIVE_INVESTIGATION_BOARDS]</span>
+                  <button
+                    type="button"
+                    className="new-session-mini-btn"
+                    onClick={() => setIsCreatingSession(true)}
+                    title="Create new investigation board"
+                  >
+                    <Plus size={11} />
+                    <span>NEW</span>
+                  </button>
+                </div>
+
+                {isCreatingSession && (
+                  <form onSubmit={handleCreateNewSessionSubmit} className="new-session-form">
+                    <input
+                      type="text"
+                      className="terminal-input new-session-input"
+                      placeholder="e.g. KERNEL_WIFI_DMA"
+                      value={newSessionNameInput}
+                      onChange={(e) => setNewSessionNameInput(e.target.value)}
+                      autoFocus
+                    />
+                    <div className="new-session-actions">
+                      <button type="submit" className="terminal-btn primary-btn btn-xs">
+                        CREATE
+                      </button>
+                      <button
+                        type="button"
+                        className="terminal-btn btn-xs"
+                        onClick={() => setIsCreatingSession(false)}
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="session-list-scroll">
+                  {sessions.length === 0 ? (
+                    <div className="session-list-empty">
+                      <span>Default Board Active</span>
+                    </div>
+                  ) : (
+                    sessions.map((sess) => {
+                      const isActive = sess.id === currentSessionId;
+                      return (
+                        <div
+                          key={sess.id}
+                          className={`session-menu-item ${isActive ? 'is-active-session' : ''}`}
+                          onClick={() => {
+                            if (onSwitchSession) onSwitchSession(sess.id);
+                            setShowSessionMenu(false);
+                          }}
+                        >
+                          <div className="session-item-left">
+                            <span className="session-item-name">{sess.name}</span>
+                            {sess.summary && (
+                              <span className="session-item-summary">{sess.summary}</span>
+                            )}
+                          </div>
+                          <div className="session-item-right">
+                            <span className={`session-status-badge status-${(sess.status || 'in_progress').toLowerCase()}`}>
+                              {sess.status || 'IN_PROGRESS'}
+                            </span>
+                            {isActive && <Check size={12} className="active-check-icon" />}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Inline Title Renamer */}
           {isEditingTitle ? (
             <div className="title-edit-form">
               <input
@@ -152,15 +277,13 @@ export const Masthead: React.FC<Props> = ({
             <div
               className="board-title-wrapper clickable-title"
               onClick={() => setIsEditingTitle(true)}
-              title="Click to rename investigation board"
+              title="Click to rename board title"
             >
-              <span className="board-title-text">{title}</span>
-              <span className="blinking-cursor">_</span>
-              <Edit2 size={11} className="title-edit-pencil" />
+              <Edit2 size={10} className="title-edit-pencil" />
             </div>
           )}
 
-          <div className="sys-status-badge" title={isTauri ? 'Native SQLite WAL Mode' : 'Local-first Web Mode'}>
+          <div className="sys-status-badge" title={isTauri ? 'Native SQLite WAL Mode (Zero Lock Contention)' : 'Local-first Web Mode'}>
             <span className="pulse-dot" />
             <span>{isTauri ? 'SQLITE: WAL' : 'WEB'}</span>
           </div>
@@ -256,7 +379,6 @@ export const Masthead: React.FC<Props> = ({
             <span>+ PIN CLUE</span>
           </button>
 
-
           <button
             type="button"
             className="terminal-btn explorer-btn"
@@ -286,6 +408,19 @@ export const Masthead: React.FC<Props> = ({
             <Tag size={13} />
             <span>TAGS</span>
           </button>
+
+          {/* Auto-Topology DAG Layout */}
+          {onAutoTopology && (
+            <button
+              type="button"
+              className="terminal-btn topology-btn"
+              onClick={onAutoTopology}
+              title="Auto-Topology: Arrange nodes into non-overlapping causal DAG strata"
+            >
+              <Workflow size={13} className="amber-glow-icon" />
+              <span>TOPOLOGY</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -435,7 +570,6 @@ export const Masthead: React.FC<Props> = ({
                     </div>
                   </div>
                 )}
-
               </div>
 
               <div className="modal-footer">
